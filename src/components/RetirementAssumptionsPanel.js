@@ -24,12 +24,12 @@ import { formatBps, formatCents } from "../utils";
  * them rather than left as a discrepancy for the reader to discover.
  */
 
-const labelClass = "mb-1.5 block font-mono text-label uppercase text-chalk-soft";
+export const labelClass = "mb-1.5 block font-mono text-label uppercase text-chalk-soft";
 
-const inputClass =
+export const inputClass =
   "w-full border-0 border-b-2 border-edge bg-transparent px-0 py-1.5 font-mono text-lg text-chalk outline-none transition-colors placeholder:text-chalk-soft/60 focus:border-azure";
 
-const noteClass = "mt-1.5 font-sans text-row text-chalk-soft";
+export const noteClass = "mt-1.5 font-sans text-row text-chalk-soft";
 
 // Distinct from the starting point's two options — see the note there.
 const SPENDING_OPTIONS = [
@@ -37,7 +37,7 @@ const SPENDING_OPTIONS = [
   { value: SPENDING_SOURCES.MANUAL, label: "A yearly figure I enter" },
 ];
 
-function Block({ title, hint, children }) {
+export function Block({ title, hint, children }) {
   return (
     <section className="border-t border-edge px-4 py-4 first:border-t-0">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -64,7 +64,7 @@ function Block({ title, hint, children }) {
  * rule of thumb: the mortgage is paid off and you stop saving for this" every
  * time focus landed on the box — and nothing could find the field by its name.
  */
-function Field({ label, seed, onCommit, note, ...props }) {
+export function Field({ label, seed, onCommit, note, ...props }) {
   const noteId = `retirement-${label.toLowerCase().replace(/[^a-z]+/g, "-")}-note`;
 
   return (
@@ -91,7 +91,7 @@ function Field({ label, seed, onCommit, note, ...props }) {
 
 /** Cents as the dollars the field asks for, and blank for a figure nobody has
  *  stated — which is not the same as zero, and must not seed the box as one. */
-const asDollars = (cents) => (cents == null ? "" : cents / 100);
+export const asDollars = (cents) => (cents == null ? "" : cents / 100);
 
 export default function RetirementAssumptionsPanel({
   plan,

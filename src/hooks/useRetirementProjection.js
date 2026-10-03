@@ -6,7 +6,8 @@ import {
   STARTING_SOURCES,
   useRetirement,
 } from "../contexts/RetirementContext";
-import useNetWorth from "./useNetWorth";
+import useNetWorth, { HOLDING_CLASSES } from "./useNetWorth";
+import { projectNetWorth } from "../netWorthProjection";
 import { currentPeriod, fromBps } from "../utils";
 
 /**
@@ -310,6 +311,61 @@ export default function useRetirementProjection() {
     const plannedContributionCents = budgetContributionCents + pretaxContributionCents;
     const annualContributionCents = plan.annualContributionCents ?? plannedContributionCents;
 
+    // ── The whole balance sheet, for `projectNetWorth` ──
+    //
+    // Every account lands in exactly one pot, so the projection starts from
+    // the same net worth the Net worth page shows today. A liability is a debt
+    // whatever the plan says about it; a ticked asset is retirement money; the
+    // rest go to their band. With a typed starting figure the ticked accounts
+    // are back in their bands and the figure is the retirement pot — it stands
+    // for money the app does not track, so nothing it covers is counted twice.
+    const byAccounts = plan.startingSource !== STARTING_SOURCES.MANUAL;
+    const pots = {
+      cashCents: 0,
+      investedCents: 0,
+      retirementCents: byAccounts ? 0 : plan.startingBalanceCents ?? 0,
+      propertyCents: 0,
+    };
+    const debtRows = [];
+    for (const row of rows) {
+      if (row.band === HOLDING_CLASSES.DEBT) {
+        const assumption = plan.debtAssumptions[row.account.id] ?? {
+          rateBps: 0,
+          monthlyPaymentCents: 0,
+        };
+        debtRows.push({
+          account: row.account,
+          owedCents: Math.max(0, -row.valueCents),
+          ...assumption,
+        });
+      } else if (byAccounts && included.has(row.account.id)) {
+        pots.retirementCents += row.valueCents;
+      } else if (row.band === HOLDING_CLASSES.CASH) {
+        pots.cashCents += row.valueCents;
+      } else if (row.band === HOLDING_CLASSES.INVESTED) {
+        pots.investedCents += row.valueCents;
+      } else {
+        pots.propertyCents += row.valueCents;
+      }
+    }
+
+    // The budget's estimates, a year of each. Everything that is not saving is
+    // spending — essentials and fun, and any category in no bucket at all.
+    const bucketTotal = (bucket) =>
+      budgets
+        .filter((budget) => budget.bucket === bucket)
+        .reduce((sum, budget) => sum + budget.plannedCents, 0) * 12;
+    const savingsCents = bucketTotal(PLAN_BUCKETS.SAVINGS);
+    const spendingCents =
+      budgets.reduce((sum, budget) => sum + budget.plannedCents, 0) * 12 -
+      savingsCents -
+      budgetContributionCents;
+    // The contribution is split back into its two halves, because only one of
+    // them comes out of take-home pay. An override replaces the total; the
+    // pretax part of it is what payroll takes, the rest comes from the budget.
+    const pretaxRetirementCents = Math.min(pretaxContributionCents, annualContributionCents);
+    const afterTaxRetirementCents = annualContributionCents - pretaxRetirementCents;
+
     return {
       plan,
       accountRows,
@@ -327,7 +383,42 @@ export default function useRetirementProjection() {
         pretaxContributionCents,
         plannedContributionCents,
         contributionSeeded: plan.annualContributionCents == null,
+        spendingCents,
+        savingsCents,
+        pots,
       },
+      debtRows,
+      netWorth: projectNetWorth({
+        currentAge: plan.currentAge,
+        retirementAge: plan.retirementAge,
+        lifeExpectancy: plan.lifeExpectancy,
+        pots,
+        debts: debtRows.map((row) => ({
+          id: row.account.id,
+          name: row.account.name,
+          owedCents: row.owedCents,
+          rateBps: row.rateBps,
+          monthlyPaymentCents: row.monthlyPaymentCents,
+        })),
+        income: {
+          source: plan.incomeSource,
+          takeHomeAnnualCents: incomeAnnualCents,
+          growthRateBps: plan.incomeGrowthRateBps,
+          salaries: plan.salaries,
+          workingTaxRateBps: plan.workingTaxRateBps,
+        },
+        spendingCents,
+        savingsCents,
+        afterTaxRetirementCents,
+        pretaxRetirementCents,
+        retirementSpendingCents: annualSpendingCents,
+        retirementTaxRateBps: plan.retirementTaxRateBps,
+        growthRateBps: plan.growthRateBps,
+        drawdownRateBps: plan.drawdownRateBps,
+        inflationRateBps: plan.inflationRateBps,
+        cashRateBps: plan.cashRateBps,
+        propertyRateBps: plan.propertyRateBps,
+      }),
       projection: projectRetirement({
         currentAge: plan.currentAge,
         retirementAge: plan.retirementAge,

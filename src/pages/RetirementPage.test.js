@@ -371,3 +371,85 @@ test("resetting puts the plan back to its defaults", () => {
   expect(screen.getByText(/7\.32% a year after inflation/)).toBeInTheDocument();
   expect(screen.getByText(/2\.93% a year after inflation/)).toBeInTheDocument();
 });
+
+describe("net worth by age", () => {
+  const projectionRegion = () => screen.getByRole("region", { name: "Net worth by age" });
+  const assumptions = () => screen.getByRole("region", { name: "Net worth assumptions" });
+  const projected = (label) =>
+    within(projectionRegion()).getByText(label).nextElementSibling.textContent;
+  const mortgage = {
+    id: "acc4",
+    name: "Mortgage",
+    type: "liability",
+    scope: "off-budget",
+    assetClass: "Other",
+    openingBalanceCents: -12000000,
+    openingDate: null,
+    reconciledOn: null,
+  };
+
+  test("starts from the net worth on the books today", () => {
+    seed();
+    renderPage();
+    statePlan({ age: 40, retireAt: 40 });
+
+    // $5,000 + $200,000 + $100,000, with nothing else to it.
+    expect(projected("At 40")).toBe("$305,000");
+  });
+
+  test("a salary is added, refused when it clashes, and kept across the income switch", () => {
+    seed();
+    renderPage();
+    statePlan();
+
+    fireEvent.click(within(assumptions()).getByLabelText("Gross salaries I enter by age"));
+    const add = (age, gross) => {
+      fireEvent.change(within(assumptions()).getByLabelText("Starting at age"), {
+        target: { value: age },
+      });
+      fireEvent.change(within(assumptions()).getByLabelText("Gross salary a year"), {
+        target: { value: gross },
+      });
+      fireEvent.click(within(assumptions()).getByRole("button", { name: "Add salary" }));
+    };
+
+    add("45", "$150,000");
+    expect(within(assumptions()).getByLabelText("Salary from age 45, gross a year")).toHaveValue(
+      "$150,000"
+    );
+
+    add("45", "$90,000");
+    expect(within(assumptions()).getByRole("alert")).toHaveTextContent(
+      "There is already a salary starting at 45."
+    );
+    // The refused row keeps what was typed, to be corrected.
+    expect(within(assumptions()).getByLabelText("Gross salary a year")).toHaveValue("$90,000");
+
+    fireEvent.click(within(assumptions()).getByLabelText("Today's take-home, rising by a rate"));
+    expect(within(assumptions()).getByLabelText("Pay rises each year")).toHaveValue("3");
+    fireEvent.click(within(assumptions()).getByLabelText("Gross salaries I enter by age"));
+    expect(
+      within(assumptions()).getByLabelText("Salary from age 45, gross a year")
+    ).toBeInTheDocument();
+  });
+
+  test("a debt is walked at the rate and payment it is given", () => {
+    seed({
+      accounts: [
+        account("acc1", "Everyday", "on-budget", 500000),
+        mortgage,
+      ],
+      // The payment lives in the budget, as the projection expects it to.
+      budgets: [{ id: "b2", name: "Mortgage", groupId: null, plannedCents: 100000, bucket: "essentials" }],
+    });
+    renderPage();
+    statePlan();
+
+    expect(within(assumptions()).getByText("$120,000 owed")).toBeInTheDocument();
+    type("Mortgage interest rate", "0");
+    type("Mortgage monthly payment", "$1,000");
+
+    // $12,000 a year against $120,000, at no interest: ten years.
+    expect(within(projectionRegion()).getByText("Mortgage is paid off at 49.")).toBeInTheDocument();
+  });
+});

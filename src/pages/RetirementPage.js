@@ -1,7 +1,9 @@
 import { useState } from "react";
 import Button from "../components/Button";
 import PageHeader from "../components/PageHeader";
+import NetWorthProjection from "../components/NetWorthProjection";
 import Placeholder from "../components/Placeholder";
+import ProjectionAssumptionsPanel from "../components/ProjectionAssumptionsPanel";
 import RetirementAssumptionsPanel from "../components/RetirementAssumptionsPanel";
 import RetirementChart from "../components/RetirementChart";
 import RetirementOutlook from "../components/RetirementOutlook";
@@ -33,19 +35,32 @@ import { formatBps, formatCents } from "../utils";
  * a different screen; what is here answers the single-plan question first.
  */
 export default function RetirementPage() {
-  const { setRetirementPlan, toggleRetirementAccount, resetRetirementPlan } = useRetirement();
-  const { plan, accountRows, inputs, projection } = useRetirementProjection();
+  const {
+    setRetirementPlan,
+    toggleRetirementAccount,
+    addSalary,
+    updateSalary,
+    removeSalary,
+    setDebtAssumption,
+    resetRetirementPlan,
+  } = useRetirement();
+  const { plan, accountRows, inputs, debtRows, netWorth, projection } = useRetirementProjection();
 
   // One message per panel rather than one for the page: the field to go back to
   // is in the panel that rejected it, and a rejection at the top of the screen
   // about an input at the bottom is a message the user has to hunt for.
   const [startingError, setStartingError] = useState(null);
   const [assumptionsError, setAssumptionsError] = useState(null);
+  const [projectionError, setProjectionError] = useState(null);
 
-  const commit = (setError) => (changes) => {
-    const result = setRetirementPlan(changes);
+  // Every mutator reports `{ ok, error }`; this puts the error in the panel
+  // that sent it and hands the result back, so a form can keep what was typed.
+  const report = (setError, mutate) => (changes) => {
+    const result = mutate(changes);
     setError(result.ok ? null : result.error);
+    return result;
   };
+  const commit = (setError) => report(setError, setRetirementPlan);
 
   return (
     <>
@@ -155,6 +170,27 @@ export default function RetirementPage() {
             onChange={commit(setAssumptionsError)}
           />
         </div>
+
+        {netWorth.ready && (
+          <NetWorthProjection
+            projection={netWorth}
+            retirementAge={plan.retirementAge}
+            lifeExpectancy={plan.lifeExpectancy}
+          />
+        )}
+
+        <ProjectionAssumptionsPanel
+          plan={plan}
+          inputs={inputs}
+          debtRows={debtRows}
+          projection={netWorth}
+          error={projectionError}
+          onChange={commit(setProjectionError)}
+          onAddSalary={report(setProjectionError, addSalary)}
+          onUpdateSalary={report(setProjectionError, updateSalary)}
+          onRemoveSalary={report(setProjectionError, removeSalary)}
+          onDebtChange={report(setProjectionError, setDebtAssumption)}
+        />
 
         <Placeholder
           title="Scenarios"

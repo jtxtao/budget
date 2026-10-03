@@ -1,5 +1,7 @@
 import React, { useCallback, useContext, useMemo } from "react";
+import { v4 as uuidV4 } from "uuid";
 import useSyncedState from "../hooks/useSyncedState";
+import { INCOME_SOURCES } from "../netWorthProjection";
 import { toBps, toCents } from "../utils";
 
 /**
@@ -55,7 +57,12 @@ export const SPENDING_SOURCES = {
   MANUAL: "manual",
 };
 
+// Owned by the projection module, which cannot import a context; re-exported
+// here so the page reads every source enum from the store that keeps the answer.
+export { INCOME_SOURCES };
+
 const STARTING_SOURCE_VALUES = Object.values(STARTING_SOURCES);
+const INCOME_SOURCE_VALUES = Object.values(INCOME_SOURCES);
 const SPENDING_SOURCE_VALUES = Object.values(SPENDING_SOURCES);
 
 // An age has to be a whole number of years on a human scale. The bounds only
@@ -143,6 +150,41 @@ export const DEFAULT_PLAN = {
   growthRateBps: 1000,
   drawdownRateBps: 550,
   inflationRateBps: 250,
+
+  // ── The whole-balance-sheet projection (`src/netWorthProjection.js`) ──
+  //
+  // **What the working years earn has two legitimate answers, and both are
+  // kept**, the starting point's rule: today's take-home grown by a rate, or
+  // gross salaries stated by age. Comparing "three percent a year" against
+  // "the promotion at 38" is the point, and a switch that cleared the salaries
+  // could only be used once. Growth is the default because it needs nothing
+  // typed — today's take-home is already on the budget plan.
+  incomeSource: INCOME_SOURCES.GROWTH,
+  // Nominal, like every rate here, and deflated by the projection — three
+  // percent is a raise of about half a point a year in today's dollars.
+  incomeGrowthRateBps: 300,
+  // `{ id, fromAge, grossCents }`, a salary in force from that age until the
+  // next one starts or work stops. **In today's dollars**, like every figure on
+  // the page: "$150,000 at 45" means what $150,000 buys now.
+  salaries: [],
+  // What a gross salary loses to tax on its way to take-home, as one effective
+  // rate — not a bracket table, the line `useGiving` draws at a tax calculation.
+  // Read only when salaries are in force; take-home is already net of it.
+  workingTaxRateBps: 2200,
+  // What a dollar out of the retirement accounts loses to tax. Without it a
+  // pre-tax 401(k) would read as buying a dollar of groceries per dollar held.
+  retirementTaxRateBps: 1200,
+  // Cash at the inflation rate holds its value and earns nothing real, which is
+  // close to what a savings account does over a decade.
+  cashRateBps: 250,
+  // Property a point above inflation: the long-run real appreciation of a home,
+  // before upkeep.
+  propertyRateBps: 350,
+  // Per liability: `{ rateBps, monthlyPaymentCents }`, keyed by account id. A
+  // guess about the future, so it lives here rather than on the account, which
+  // is a statement of fact. **Inert but kept** for a deleted account — the
+  // projection only asks about the liabilities that exist.
+  debtAssumptions: {},
 };
 
 export function useRetirement() {
@@ -153,6 +195,22 @@ const isAge = (value) => Number.isInteger(value) && value >= MIN_AGE && value <=
 const isRate = (value) => Number.isInteger(value) && value >= 0 && value <= MAX_RATE_BPS;
 const isShare = (value) => Number.isInteger(value) && value >= 0 && value <= MAX_SHARE_BPS;
 const isAmount = (value) => Number.isInteger(value) && value >= 0;
+
+const isSalary = (salary) =>
+  salary &&
+  typeof salary === "object" &&
+  typeof salary.id === "string" &&
+  isAge(salary.fromAge) &&
+  isAmount(salary.grossCents);
+
+const isDebtAssumption = (entry) =>
+  entry && typeof entry === "object" && isRate(entry.rateBps) && isAmount(entry.monthlyPaymentCents);
+
+/** One salary per starting age: two that start together would leave which one
+ *  is in force to the order they happen to be stored in. */
+function sortSalaries(salaries) {
+  return [...salaries].sort((a, b) => a.fromAge - b.fromAge);
+}
 
 /**
  * A whole-value guard rather than a field-presence migration.
@@ -199,12 +257,47 @@ function migratePlan(stored) {
     growthRateBps: take(plan.growthRateBps, isRate, DEFAULT_PLAN.growthRateBps),
     drawdownRateBps: take(plan.drawdownRateBps, isRate, DEFAULT_PLAN.drawdownRateBps),
     inflationRateBps: take(plan.inflationRateBps, isRate, DEFAULT_PLAN.inflationRateBps),
+
+    incomeSource: INCOME_SOURCE_VALUES.includes(plan.incomeSource)
+      ? plan.incomeSource
+      : DEFAULT_PLAN.incomeSource,
+    incomeGrowthRateBps: take(plan.incomeGrowthRateBps, isRate, DEFAULT_PLAN.incomeGrowthRateBps),
+    salaries: Array.isArray(plan.salaries) ? sortSalaries(plan.salaries.filter(isSalary)) : [],
+    workingTaxRateBps: take(plan.workingTaxRateBps, isRate, DEFAULT_PLAN.workingTaxRateBps),
+    retirementTaxRateBps: take(plan.retirementTaxRateBps, isRate, DEFAULT_PLAN.retirementTaxRateBps),
+    cashRateBps: take(plan.cashRateBps, isRate, DEFAULT_PLAN.cashRateBps),
+    propertyRateBps: take(plan.propertyRateBps, isRate, DEFAULT_PLAN.propertyRateBps),
+    debtAssumptions:
+      plan.debtAssumptions && typeof plan.debtAssumptions === "object"
+        ? Object.fromEntries(
+            Object.entries(plan.debtAssumptions).filter(([, entry]) => isDebtAssumption(entry))
+          )
+        : {},
   };
 }
 
 /** Blank means "not stated", which is a real answer for every nullable field
  *  here — and distinct from zero, which is a plan to save nothing. */
 const isBlank = (value) => value === null || value === undefined || String(value).trim() === "";
+
+/**
+ * Read one salary from what a form sent: an age and a gross figure, both
+ * required. A salary with no age is not "from now" — it is a row half filled
+ * in, and storing it would put a figure in force from an age nobody stated.
+ */
+const readSalary = (fromAge, gross) => {
+  if (isBlank(fromAge) || !isAge(Number(fromAge))) {
+    return { error: `Enter the age a salary starts as a whole number, ${MIN_AGE} to ${MAX_AGE}.` };
+  }
+  const grossCents = isBlank(gross) ? null : toCents(gross);
+  if (grossCents == null || grossCents < 0) {
+    return { error: "Enter the salary as a yearly amount of zero or more." };
+  }
+  return { fromAge: Number(fromAge), grossCents };
+};
+
+/** Two salaries starting at one age is refused — see `sortSalaries`. */
+const clashMessage = (age) => `There is already a salary starting at ${age}.`;
 
 export const RetirementProvider = ({ children }) => {
   const [plan, setPlan] = useSyncedState("retirementPlan", DEFAULT_PLAN, migratePlan);
@@ -269,6 +362,11 @@ export const RetirementProvider = ({ children }) => {
         rate("growthRateBps", "the return while you are saving") ??
         rate("drawdownRateBps", "the return once you have retired") ??
         rate("inflationRateBps", "inflation") ??
+        rate("incomeGrowthRateBps", "how fast your pay grows") ??
+        rate("workingTaxRateBps", "the tax on your salary") ??
+        rate("retirementTaxRateBps", "the tax on retirement withdrawals") ??
+        rate("cashRateBps", "the return on cash") ??
+        rate("propertyRateBps", "how fast property appreciates") ??
         amount("startingBalanceCents", "your starting balance") ??
         amount("annualSpendingCents", "yearly spending in retirement") ??
         amount("pretaxContributionCents", "your pretax retirement contributions") ??
@@ -291,6 +389,13 @@ export const RetirementProvider = ({ children }) => {
           return { ok: false, error: "Choose where your starting balance comes from." };
         }
         patch.startingSource = changes.startingSource;
+      }
+
+      if (changes.incomeSource !== undefined) {
+        if (!INCOME_SOURCE_VALUES.includes(changes.incomeSource)) {
+          return { ok: false, error: "Choose how your future income is worked out." };
+        }
+        patch.incomeSource = changes.incomeSource;
       }
 
       if (changes.spendingSource !== undefined) {
@@ -333,13 +438,119 @@ export const RetirementProvider = ({ children }) => {
     [setPlan]
   );
 
+  const addSalary = useCallback(
+    ({ fromAge, gross }) => {
+      const salary = readSalary(fromAge, gross);
+      if (salary.error) return { ok: false, error: salary.error };
+      if (plan.salaries.some((entry) => entry.fromAge === salary.fromAge)) {
+        return { ok: false, error: clashMessage(salary.fromAge) };
+      }
+      setPlan((previous) => ({
+        ...previous,
+        salaries: sortSalaries([...previous.salaries, { id: uuidV4(), ...salary }]),
+      }));
+      return { ok: true };
+    },
+    [plan.salaries, setPlan]
+  );
+
+  /** Patch one salary. Both fields are re-read, so a row sends what it shows. */
+  const updateSalary = useCallback(
+    ({ id, fromAge, gross }) => {
+      const existing = plan.salaries.find((entry) => entry.id === id);
+      // Refused rather than reported as landed: a salary removed on another
+      // device can still be on screen here.
+      if (!existing) return { ok: false, error: "That salary is no longer in the plan." };
+      const salary = readSalary(
+        fromAge ?? existing.fromAge,
+        gross ?? (existing.grossCents / 100).toFixed(2)
+      );
+      if (salary.error) return { ok: false, error: salary.error };
+      if (plan.salaries.some((entry) => entry.id !== id && entry.fromAge === salary.fromAge)) {
+        return { ok: false, error: clashMessage(salary.fromAge) };
+      }
+      setPlan((previous) => ({
+        ...previous,
+        salaries: sortSalaries(
+          previous.salaries.map((entry) => (entry.id === id ? { ...entry, ...salary } : entry))
+        ),
+      }));
+      return { ok: true };
+    },
+    [plan.salaries, setPlan]
+  );
+
+  const removeSalary = useCallback(
+    (id) => {
+      setPlan((previous) => ({
+        ...previous,
+        salaries: previous.salaries.filter((entry) => entry.id !== id),
+      }));
+      return { ok: true };
+    },
+    [setPlan]
+  );
+
+  /**
+   * What one liability is expected to charge and be paid. A blank rate or
+   * payment reads as zero — a debt has to be walked at *something*, and zero
+   * is the honest reading of "not stated": it is held at its nominal figure.
+   */
+  const setDebtAssumption = useCallback(
+    ({ accountId, rate, monthlyPayment }) => {
+      if (typeof accountId !== "string") return { ok: false, error: "Choose a debt." };
+      const current = plan.debtAssumptions[accountId] ?? { rateBps: 0, monthlyPaymentCents: 0 };
+      const next = { ...current };
+
+      if (rate !== undefined) {
+        const bps = isBlank(rate) ? 0 : toBps(rate);
+        if (bps == null || !isRate(bps)) {
+          return { ok: false, error: `Enter the interest rate as a percentage between 0 and ${MAX_RATE_BPS / 100}.` };
+        }
+        next.rateBps = bps;
+      }
+      if (monthlyPayment !== undefined) {
+        const cents = isBlank(monthlyPayment) ? 0 : toCents(monthlyPayment);
+        if (cents == null || cents < 0) {
+          return { ok: false, error: "Enter the monthly payment as an amount of zero or more." };
+        }
+        next.monthlyPaymentCents = cents;
+      }
+
+      setPlan((previous) => ({
+        ...previous,
+        debtAssumptions: { ...previous.debtAssumptions, [accountId]: next },
+      }));
+      return { ok: true };
+    },
+    [plan.debtAssumptions, setPlan]
+  );
+
   const resetRetirementPlan = useCallback(() => setPlan(DEFAULT_PLAN), [setPlan]);
 
   // Memoised so a change in any other store does not re-render every consumer
   // of this one.
   const value = useMemo(
-    () => ({ plan, setRetirementPlan, toggleRetirementAccount, resetRetirementPlan }),
-    [plan, setRetirementPlan, toggleRetirementAccount, resetRetirementPlan]
+    () => ({
+      plan,
+      setRetirementPlan,
+      toggleRetirementAccount,
+      addSalary,
+      updateSalary,
+      removeSalary,
+      setDebtAssumption,
+      resetRetirementPlan,
+    }),
+    [
+      plan,
+      setRetirementPlan,
+      toggleRetirementAccount,
+      addSalary,
+      updateSalary,
+      removeSalary,
+      setDebtAssumption,
+      resetRetirementPlan,
+    ]
   );
 
   return <RetirementContext.Provider value={value}>{children}</RetirementContext.Provider>;
