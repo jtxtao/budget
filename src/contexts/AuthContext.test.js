@@ -217,9 +217,14 @@ describe("sign-up validation", () => {
     expect(outcome).toEqual({ ok: true, confirmationRequired: true });
     expect(result.current.pendingConfirmation).toBe("jt@example.com");
     // Trimmed on the way to the API, or the address never matches on sign-in.
+    // Asserted whole, this suite's rule: `emailRedirectTo` is what sends the
+    // confirmation link back to the app that asked rather than to the project's
+    // single Site URL, which matters because the project behind it also serves
+    // another app. jsdom's origin is "http://localhost".
     expect(mockAuth.signUp).toHaveBeenCalledWith({
       email: "jt@example.com",
       password: "correct-horse",
+      options: { emailRedirectTo: "http://localhost" },
     });
   });
 });

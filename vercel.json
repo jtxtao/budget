@@ -1,12 +1,16 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+
+  "//": "The single-page rewrite, stated rather than inherited. Vercel's Create React App preset adds a fallback of its own, but this app's routing is load-bearing in a way that should not depend on a framework guess: `BrowserRouter` owns every path in `src/navigation.js`, so a reload on /net-worth has to be served index.html rather than a 404. Rewrites are evaluated *after* the filesystem check, so a real asset still wins and only unmatched paths fall through. It is the same rule the shell implements in `electron/main.js` — a path with no extension is a route — which is why `homepage` stays unset in package.json: setting it to \"./\" would fix relative assets in the shell and break every deep link here.",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://lvglgujdkdqroywhfztb.supabase.co wss://lvglgujdkdqroywhfztb.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://uxijnhiizxsudwxpckgx.supabase.co wss://uxijnhiizxsudwxpckgx.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
         },
         {
           "key": "Strict-Transport-Security",

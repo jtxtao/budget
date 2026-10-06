@@ -398,8 +398,13 @@ export const SyncProvider = ({ children }) => {
   useEffect(() => {
     if (!remote || !hydrated) return undefined;
 
+    // Namespaced by app, because the project behind it is no longer this app's
+    // alone. Realtime topics are a flat namespace per project, so `app_state`
+    // on its own names a table that only one of the apps sharing this project
+    // has — hygiene rather than a fix, since the `postgres_changes` bindings
+    // below are per-subscription and would not cross-deliver either way.
     const channel = getSupabase()
-      .channel(`app_state:${userId}`)
+      .channel(`budget:app_state:${userId}`)
       .on(
         "postgres_changes",
         {

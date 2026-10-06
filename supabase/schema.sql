@@ -104,7 +104,13 @@ begin
 end
 $$;
 
--- Realtime sends only the primary key on UPDATE unless the table replicates the
--- full row. The client needs `value` off the payload to apply a remote change
--- without a round trip.
-alter table public.app_state replica identity;
+-- Realtime sends only the replica-identity columns for the *old* tuple, which by
+-- default is the primary key alone. `SyncContext`'s subscription reads
+-- `payload.old` on a DELETE, and Supabase evaluates RLS against the old row for
+-- UPDATE and DELETE, so the table has to replicate the whole thing.
+--
+-- `FULL` and not the bare statement: `ALTER TABLE ... REPLICA IDENTITY` takes a
+-- mode (DEFAULT / FULL / NOTHING / USING INDEX) and is a syntax error without
+-- one — which, in the SQL editor, rejects the *whole* script before any of it
+-- runs, so this line failing means nothing above it was applied either.
+alter table public.app_state replica identity full;

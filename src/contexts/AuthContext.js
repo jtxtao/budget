@@ -245,7 +245,21 @@ export const AuthProvider = ({ children }) => {
     if (passwordError) return { ok: false, error: passwordError };
 
     const address = email.trim();
-    const { data, error } = await supabase.auth.signUp({ email: address, password });
+    const { data, error } = await supabase.auth.signUp({
+      email: address,
+      password,
+      options: {
+        // **Back to the app that asked, not to the project's Site URL.** A
+        // Supabase project has one Site URL and it is what a confirmation link
+        // falls back to — which was harmless while this project served one app,
+        // and is wrong the moment it serves two: a household signing up here
+        // would confirm their address and land in an unrelated app with no idea
+        // why. Same reasoning, and the same expression, as
+        // `requestPasswordReset` below, so the two emails cannot disagree about
+        // where they lead.
+        emailRedirectTo: window.location.origin,
+      },
+    });
     if (error) return { ok: false, error: describeAuthError(error) };
 
     // With email confirmation on, `signUp` returns a user and *no* session —
