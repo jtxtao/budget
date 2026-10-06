@@ -46,10 +46,9 @@ module.exports = {
         "on-canopy": token("on-canopy"),
         "on-canopy-soft": token("on-canopy-soft"),
         coin: token("coin"),
-        // The tab bar's family marks — configuration, the ledger, the reports —
-        // which sit on the canopy and so are tuned for it, not for the page.
+        // The one warning colour that sits on the canopy — the unsent-edits
+        // badge — and so is tuned for that green, not for the page.
         "on-canopy-rust": token("on-canopy-rust"),
-        "on-canopy-sky": token("on-canopy-sky"),
 
         // The primary action and its label. Green like income, but a token of
         // its own: `azure` is also a bucket colour beside `verdant` on the plan's

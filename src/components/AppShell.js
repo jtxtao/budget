@@ -76,20 +76,19 @@ export default function AppShell({ children }) {
             </div>
           </div>
           <nav aria-label="Sections" className="mt-4 flex flex-wrap gap-x-7">
-            {navigation.map(({ path, label, family }) => (
+            {navigation.map(({ path, label }) => (
               <NavLink
                 key={path}
                 to={path}
                 end={path === "/"}
                 className={({ isActive }) =>
-                  `flex items-center gap-2 border-b-[3px] pb-2.5 pt-1 font-sans text-sm transition-colors ${
+                  `border-b-[3px] pb-2.5 pt-1 font-sans text-sm transition-colors ${
                     isActive
                       ? "border-coin font-bold text-on-canopy"
                       : "border-transparent font-medium text-on-canopy-soft hover:border-on-canopy-soft/40 hover:text-on-canopy"
                   }`
                 }
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${family}`} aria-hidden="true" />
                 {label}
               </NavLink>
             ))}
