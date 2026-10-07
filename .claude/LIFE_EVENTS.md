@@ -1,7 +1,8 @@
 # Life events and the net-worth projection
 
-In progress. Step 1 is built: the whole-balance-sheet projection (`src/netWorthProjection.js`)
-and its assumptions, on the Retirement page. Life events are not built yet. Three decisions
+In progress. Steps 1–3 are built: the whole-balance-sheet projection (`src/netWorthProjection.js`)
+and its assumptions, and life events (expenses, income, pay changes) with templates and a
+savings-goal shortcut, all on the Retirement page. Buying and selling property is next. Three decisions
 here were made in conversation rather than deduced from the code, and they are the ones to
 keep if the rest is revisited: the projection is **full net worth**, not the retirement pot
 alone; future income is **either today's take-home grown by a rate or gross salaries entered
@@ -50,7 +51,7 @@ The Retirement page's outlook still reads `projectRetirement`. It moves onto thi
 in step 5, which will also make the two disagree less: today the outlook ignores retirement
 tax and everything outside the ticked accounts.
 
-## Life events (next)
+## Life events (built, except property)
 
 `LifeEventsContext`, key `lifeEvents` (add it to `STORE_KEYS`). `{ id, name, kind, startAge,
 endAge, enabled, … }`, non-negative magnitudes with the direction in `kind`. A store of guesses
@@ -73,8 +74,9 @@ it out, which is what "with kids / without" and later Scenarios are built on.
 
 1. ~~Projection and its assumptions, with the three tripwires.~~ Done.
 2. ~~Debt rates and payments, payoff, appreciation.~~ Done with step 1.
-3. Life events store, the walk reading it, templates (wedding from a goal, childcare, Social
-   Security, sabbatical).
+3. ~~Life events store, the walk reading it, templates.~~ Done. Kinds as built: expense,
+   income, income change (a share of pay kept, scaling take-home, pretax and budget saving but
+   not spending). `years`, not an end age.
 4. Buy and sell property.
 5. The page: stacked chart by band over age with event markers, the outlook read off this
    projection.
