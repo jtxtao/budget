@@ -77,6 +77,9 @@ export const STORE_KEYS = [
   "emergencyFund",
   "lifeEvents",
   "retirementScenarios",
+  "rewardsBalances",
+  "rewardsValuations",
+  "rewardsTrips",
 ];
 
 /**

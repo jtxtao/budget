@@ -13,6 +13,7 @@ import { SchedulesProvider } from "./SchedulesContext";
 import { EmergencyFundProvider } from "./EmergencyFundContext";
 import { LifeEventsProvider } from "./LifeEventsContext";
 import { ScenariosProvider } from "./ScenariosContext";
+import { RewardsProvider } from "./RewardsContext";
 
 // Composes every store in one place so index.js and the tests wrap the app the
 // same way, and adding a store does not mean editing both.
@@ -89,6 +90,11 @@ import { ScenariosProvider } from "./ScenariosContext";
 // never read back from those stores, so a deleted event is inert in it and
 // nothing cascades either way. Using one is the page's write, not the store's.
 //
+// Rewards is independent in both directions: points and miles are not money
+// until they are redeemed, so nothing derived from the books reads them, and
+// the store names only programs from the built-in catalog in src/rewards.js.
+// Nothing cascades either way, so its position here is free.
+//
 // SavingsGoals is independent of every other store: a goal names no category,
 // no account, and no transaction, so nothing outside this pair deletes into or
 // out of it. SavingsGoalAssignments is the money-actually-put-in half of a
@@ -113,7 +119,9 @@ export default function AppProviders({ children }) {
                           <SchedulesProvider>
                             <EmergencyFundProvider>
                               <LifeEventsProvider>
-                                <ScenariosProvider>{children}</ScenariosProvider>
+                                <ScenariosProvider>
+                                  <RewardsProvider>{children}</RewardsProvider>
+                                </ScenariosProvider>
                               </LifeEventsProvider>
                             </EmergencyFundProvider>
                           </SchedulesProvider>
