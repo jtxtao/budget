@@ -228,7 +228,7 @@ function sortSalaries(salaries) {
  * the `income` and `expenses` keys are, because a migration that destroys data
  * has no way to undo itself.
  */
-function migratePlan(stored) {
+export function migratePlan(stored) {
   const plan = stored && typeof stored === "object" ? stored : {};
   const take = (value, ok, fallback) => (ok(value) ? value : fallback);
 
@@ -528,6 +528,19 @@ export const RetirementProvider = ({ children }) => {
 
   const resetRetirementPlan = useCallback(() => setPlan(DEFAULT_PLAN), [setPlan]);
 
+  /**
+   * Put a whole plan in force — a saved scenario being used. Read through the
+   * same guard as storage, so a scenario saved by an older build gains the
+   * fields it predates rather than writing holes into the plan.
+   */
+  const replaceRetirementPlan = useCallback(
+    (next) => {
+      setPlan(migratePlan(next));
+      return { ok: true };
+    },
+    [setPlan]
+  );
+
   // Memoised so a change in any other store does not re-render every consumer
   // of this one.
   const value = useMemo(
@@ -540,6 +553,7 @@ export const RetirementProvider = ({ children }) => {
       removeSalary,
       setDebtAssumption,
       resetRetirementPlan,
+      replaceRetirementPlan,
     }),
     [
       plan,
@@ -550,6 +564,7 @@ export const RetirementProvider = ({ children }) => {
       removeSalary,
       setDebtAssumption,
       resetRetirementPlan,
+      replaceRetirementPlan,
     ]
   );
 

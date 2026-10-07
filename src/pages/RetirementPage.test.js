@@ -653,3 +653,111 @@ describe("buying and selling a home", () => {
     );
   });
 });
+
+describe("scenarios", () => {
+  const panel = () => screen.getByRole("region", { name: "Scenarios" });
+  const compared = () => within(panel()).getByRole("table", { name: "Plans compared" });
+  const rowFor = (name) =>
+    within(compared())
+      .getAllByRole("row")
+      .find((row) => row.querySelector("th")?.textContent.startsWith(name));
+  const save = (name) => {
+    fireEvent.change(within(panel()).getByLabelText("Save the current plan as"), {
+      target: { value: name },
+    });
+    fireEvent.click(within(panel()).getByRole("button", { name: "Save scenario" }));
+  };
+
+  test("saving keeps the plan, and the copy no longer follows it", () => {
+    seed();
+    renderPage();
+    statePlan();
+
+    save("Retire at 65");
+    expect(rowFor("Retire at 65")).toHaveTextContent("In use");
+    expect(rowFor("Retire at 65").querySelectorAll("td")[0]).toHaveTextContent("65");
+
+    // The live plan moves; the saved one does not.
+    type("Retire at", "60");
+    expect(rowFor("Current plan").querySelectorAll("td")[0]).toHaveTextContent("60");
+    expect(rowFor("Retire at 65").querySelectorAll("td")[0]).toHaveTextContent("65");
+    expect(rowFor("Retire at 65")).not.toHaveTextContent("In use");
+  });
+
+  test("using a scenario puts its plan and its events back", () => {
+    seed();
+    renderPage();
+    statePlan();
+    const events = screen.getByRole("region", { name: "Life events" });
+    fireEvent.click(within(events).getByRole("button", { name: "Wedding" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Add event" }));
+    save("With the wedding");
+
+    fireEvent.click(within(events).getByRole("checkbox", { name: "Include Wedding" }));
+    type("Retire at", "60");
+
+    fireEvent.click(within(panel()).getByRole("button", { name: "Use With the wedding" }));
+    expect(screen.getByLabelText("Retire at")).toHaveValue(65);
+    expect(within(events).getByRole("checkbox", { name: "Include Wedding" })).toBeChecked();
+    expect(rowFor("With the wedding")).toHaveTextContent("In use");
+  });
+
+  test("updating overwrites a scenario with the current plan", () => {
+    seed();
+    renderPage();
+    statePlan();
+    save("Plan A");
+    type("Retire at", "60");
+
+    fireEvent.click(within(panel()).getByRole("button", { name: "Update Plan A with the current plan" }));
+    expect(rowFor("Plan A").querySelectorAll("td")[0]).toHaveTextContent("60");
+    expect(rowFor("Plan A")).toHaveTextContent("In use");
+  });
+
+  test("a clashing name is refused, and four is the most", () => {
+    seed();
+    renderPage();
+    statePlan();
+    save("One");
+    save(" one ");
+    expect(within(panel()).getByRole("alert")).toHaveTextContent('There is already a scenario called "one".');
+
+    save("Two");
+    save("Three");
+    save("Four");
+    expect(within(panel()).getByRole("button", { name: "Save scenario" })).toBeDisabled();
+  });
+
+  test("removing one leaves the others their colours", () => {
+    seed();
+    renderPage();
+    statePlan();
+    save("One");
+    save("Two");
+    const swatchOf = (name) => rowFor(name).querySelector("th span span").className;
+    const before = swatchOf("Two");
+
+    fireEvent.click(within(panel()).getByRole("button", { name: "Remove One" }));
+    expect(rowFor("One")).toBeUndefined();
+    expect(swatchOf("Two")).toBe(before);
+  });
+
+  test("the sensitivity table moves the way the rates do", () => {
+    seed();
+    renderPage();
+    statePlan();
+    const table = within(panel()).getByRole("table", { name: "Sensitivity to the rates" });
+    const endOf = (label) =>
+      Number(
+        within(table)
+          .getAllByRole("row")
+          .find((row) => row.querySelector("th")?.textContent.startsWith(label))
+          .querySelectorAll("td")[2]
+          .textContent.replace(/[^0-9.-]/g, "")
+      );
+
+    expect(endOf("Returns while saving 11%")).toBeGreaterThan(endOf("As planned"));
+    expect(endOf("Returns while saving 9%")).toBeLessThan(endOf("As planned"));
+    expect(endOf("Inflation 3.5%")).toBeLessThan(endOf("As planned"));
+  });
+});

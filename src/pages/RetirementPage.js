@@ -1,17 +1,18 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import AddLifeEventModal from "../components/AddLifeEventModal";
 import Button from "../components/Button";
 import LifeEventsPanel from "../components/LifeEventsPanel";
 import PageHeader from "../components/PageHeader";
 import NetWorthProjection from "../components/NetWorthProjection";
-import Placeholder from "../components/Placeholder";
 import ProjectionAssumptionsPanel from "../components/ProjectionAssumptionsPanel";
+import ScenariosPanel from "../components/ScenariosPanel";
 import RetirementAssumptionsPanel from "../components/RetirementAssumptionsPanel";
 import RetirementChart from "../components/RetirementChart";
 import RetirementOutlook from "../components/RetirementOutlook";
 import RetirementStartingPoint from "../components/RetirementStartingPoint";
 import { LIFE_EVENT_KINDS, useLifeEvents } from "../contexts/LifeEventsContext";
-import { useRetirement } from "../contexts/RetirementContext";
+import { migratePlan, useRetirement } from "../contexts/RetirementContext";
+import { useScenarios } from "../contexts/ScenariosContext";
 import { useSavingsGoals } from "../contexts/SavingsGoalsContext";
 import useRetirementProjection from "../hooks/useRetirementProjection";
 import { formatBps, formatCents } from "../utils";
@@ -34,10 +35,28 @@ import { formatBps, formatCents } from "../utils";
  * but the plan is its own store, and a scenario explored here moves no money
  * — see `RetirementContext`.
  *
- * Scenarios are still a placeholder. Comparing two plans side by side needs the
- * store to hold more than one of them, which is a different shape of record and
- * a different screen; what is here answers the single-plan question first.
+ * Scenarios are saved copies of the plan with the events that were on, each
+ * projected over the same books through `resolveWith` and compared beside the
+ * current plan, with a sensitivity table under them — see `ScenariosContext`
+ * and `ScenariosPanel`. Using one writes the plan and the events' switches,
+ * never the books.
  */
+/** Two records equal field by field, whatever order their keys were written
+ *  in — a stored plan and a migrated copy of it list theirs differently. */
+function sameRecord(a, b) {
+  const canonical = (value) =>
+    Array.isArray(value)
+      ? value.map(canonical)
+      : value && typeof value === "object"
+        ? Object.fromEntries(
+            Object.keys(value)
+              .sort()
+              .map((key) => [key, canonical(value[key])])
+          )
+        : value;
+  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+}
+
 export default function RetirementPage() {
   const {
     setRetirementPlan,
@@ -47,6 +66,7 @@ export default function RetirementPage() {
     removeSalary,
     setDebtAssumption,
     resetRetirementPlan,
+    replaceRetirementPlan,
   } = useRetirement();
   const {
     plan,
@@ -57,6 +77,7 @@ export default function RetirementPage() {
     projection,
     propertyOptions,
     debtOptions,
+    resolveWith,
   } = useRetirementProjection();
 
   // One message per panel rather than one for the page: the field to go back to
@@ -66,7 +87,74 @@ export default function RetirementPage() {
   const [assumptionsError, setAssumptionsError] = useState(null);
   const [projectionError, setProjectionError] = useState(null);
 
-  const { events, setLifeEventEnabled, deleteLifeEvent } = useLifeEvents();
+  const { events, setLifeEventEnabled, setEnabledEvents, deleteLifeEvent } = useLifeEvents();
+  const { scenarios, saveScenario, updateScenario, deleteScenario } = useScenarios();
+  const [scenarioError, setScenarioError] = useState(null);
+
+  // The current plan and every saved scenario, each projected over the same
+  // books by the same derivation — a scenario differs only by what it saved.
+  const enabledEventIds = events.filter((event) => event.enabled).map((event) => event.id);
+  const scenarioRows = useMemo(() => {
+    const live = new Set(events.filter((event) => event.enabled).map((event) => event.id));
+    const saved = scenarios.map((scenario) => {
+      const savedPlan = migratePlan(scenario.plan);
+      const on = new Set(scenario.enabledEventIds);
+      const resolved = resolveWith(
+        savedPlan,
+        events.map((event) => ({ ...event, enabled: on.has(event.id) }))
+      );
+      // "In use" when the live plan is this one: the same assumptions, and the
+      // same events on among those that still exist.
+      const sameEvents = events.every((event) => on.has(event.id) === live.has(event.id));
+      return {
+        key: scenario.id,
+        label: scenario.name,
+        retirementAge: savedPlan.retirementAge,
+        projection: resolved.projection,
+        netWorth: resolved.netWorth,
+        scenario,
+        inUse: sameEvents && sameRecord(savedPlan, plan),
+      };
+    });
+    return [
+      {
+        key: "current",
+        label: "Current plan",
+        retirementAge: plan.retirementAge,
+        projection,
+        netWorth,
+        scenario: null,
+        inUse: false,
+      },
+      ...saved,
+    ];
+  }, [scenarios, events, plan, projection, netWorth, resolveWith]);
+
+  // The current plan with one rate a point either way.
+  const sensitivity = useMemo(() => {
+    if (!projection.ready) return [];
+    const moves = [
+      { field: "growthRateBps", label: "Returns while saving" },
+      { field: "drawdownRateBps", label: "Returns once retired" },
+      { field: "inflationRateBps", label: "Inflation" },
+    ];
+    const rows = [{ key: "base", label: "As planned", projection, netWorth }];
+    for (const move of moves) {
+      for (const delta of [100, -100]) {
+        const value = plan[move.field] + delta;
+        if (value < 0) continue;
+        const resolved = resolveWith({ ...plan, [move.field]: value });
+        rows.push({
+          key: `${move.field}${delta}`,
+          label: `${move.label} ${formatBps(value)} (${delta > 0 ? "+" : "−"}1 point)`,
+          projection: resolved.projection,
+          netWorth: resolved.netWorth,
+        });
+      }
+    }
+    return rows;
+  }, [plan, projection, netWorth, resolveWith]);
+
   const { goals } = useSavingsGoals();
   // One modal for adding and editing, the savings-goals page's arrangement:
   // `editing` is the record, `seed` what a new one starts from.
@@ -247,13 +335,21 @@ export default function RetirementPage() {
           handleClose={() => setEventModal((current) => ({ ...current, show: false }))}
         />
 
-        <Placeholder
-          title="Scenarios"
-          items={[
-            "Save a set of assumptions as a named scenario",
-            "Compare scenarios side by side on one chart",
-            "Sensitivity view: what a one-point change in return or inflation does to the outcome",
-          ]}
+        <ScenariosPanel
+          rows={scenarioRows}
+          sensitivity={sensitivity}
+          error={scenarioError}
+          onSave={report(setScenarioError, (name) =>
+            saveScenario({ name, plan, enabledEventIds })
+          )}
+          onUse={report(setScenarioError, (scenario) => {
+            replaceRetirementPlan(scenario.plan);
+            return setEnabledEvents(scenario.enabledEventIds);
+          })}
+          onUpdate={report(setScenarioError, (scenario) =>
+            updateScenario({ id: scenario.id, plan, enabledEventIds })
+          )}
+          onRemove={report(setScenarioError, deleteScenario)}
         />
       </div>
     </>

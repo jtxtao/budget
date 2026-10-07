@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { PLAN_BUCKETS, useBudgets } from "../contexts/BudgetsContext";
 import { useIncomePlan } from "../contexts/IncomePlanContext";
 import { useLifeEvents } from "../contexts/LifeEventsContext";
@@ -254,6 +254,196 @@ export function projectRetirement({
  * the three seeded figures has a real answer somewhere in the books, and reading
  * them here means the page shows one figure and the maths uses the same one.
  */
+/**
+ * Everything the page shows, from a plan, a set of events and the books.
+ *
+ * The hook's whole derivation as a plain function, so the same books can be
+ * projected under a plan that is not the one in force — a saved scenario, or
+ * the current plan with one rate nudged for the sensitivity table — without a
+ * second derivation that could drift from the one the page headlines. `rows`
+ * is `useNetWorth`'s, `budgets` the budget store's, and `expectedMonthlyCents`
+ * the income plan's: the three readings of the books a plan is applied to.
+ */
+export function resolveProjection({ plan, events, rows, budgets, expectedMonthlyCents }) {
+  const included = new Set(plan.accountIds);
+  const accountRows = rows.map((row) => ({
+    account: row.account,
+    valueCents: row.valueCents,
+    included: included.has(row.account.id),
+    // Where the figure came from matters here as much as on the net-worth
+    // page: an account last valued in March is being counted at March's
+    // figure, and a plan built on it should say so.
+    hand: row.hand,
+    asOf: row.asOf,
+  }));
+
+  // Signed, so a liability someone chooses to count — a loan against the
+  // portfolio — subtracts, on the one sign convention the balance sheet uses
+  // everywhere else.
+  const selectedCents = accountRows
+    .filter((row) => row.included)
+    .reduce((sum, row) => sum + row.valueCents, 0);
+
+  const startingCents =
+    plan.startingSource === STARTING_SOURCES.MANUAL
+      ? plan.startingBalanceCents ?? 0
+      : selectedCents;
+
+  const incomeAnnualCents = expectedMonthlyCents * 12;
+  const shareSpendingCents = Math.round(incomeAnnualCents * fromBps(plan.incomeShareBps));
+  const annualSpendingCents =
+    plan.spendingSource === SPENDING_SOURCES.MANUAL
+      ? plan.annualSpendingCents ?? 0
+      : shareSpendingCents;
+
+  // What the budget already puts aside for retirement specifically,
+  // annualised — the retirement bucket is the app's existing answer to "what
+  // am I setting aside for this", so a plan that has not been told otherwise
+  // uses it rather than assuming nothing is being saved. Deliberately not the
+  // savings bucket: a house deposit or emergency fund sits there too, and
+  // counting it here would overstate what is actually earmarked for
+  // retirement. This is only the after-tax half — see the doc comment above.
+  const budgetContributionCents =
+    budgets
+      .filter((budget) => budget.bucket === PLAN_BUCKETS.RETIREMENT)
+      .reduce((sum, budget) => sum + budget.plannedCents, 0) * 12;
+  // The pre-tax half: typed, never derived, and simply zero for a household
+  // with no payroll retirement plan.
+  const pretaxContributionCents = plan.pretaxContributionCents ?? 0;
+  const plannedContributionCents = budgetContributionCents + pretaxContributionCents;
+  const annualContributionCents = plan.annualContributionCents ?? plannedContributionCents;
+
+  // ── The whole balance sheet, for `projectNetWorth` ──
+  //
+  // Every account lands in exactly one pot, so the projection starts from
+  // the same net worth the Net worth page shows today. A liability is a debt
+  // whatever the plan says about it; a ticked asset is retirement money; the
+  // rest go to their band. With a typed starting figure the ticked accounts
+  // are back in their bands and the figure is the retirement pot — it stands
+  // for money the app does not track, so nothing it covers is counted twice.
+  const byAccounts = plan.startingSource !== STARTING_SOURCES.MANUAL;
+  const pots = {
+    cashCents: 0,
+    investedCents: 0,
+    retirementCents: byAccounts ? 0 : plan.startingBalanceCents ?? 0,
+  };
+  // Each property on its own, because a sale names one.
+  const properties = [];
+  const debtRows = [];
+  for (const row of rows) {
+    if (row.band === HOLDING_CLASSES.DEBT) {
+      const assumption = plan.debtAssumptions[row.account.id] ?? {
+        rateBps: 0,
+        monthlyPaymentCents: 0,
+      };
+      debtRows.push({
+        account: row.account,
+        owedCents: Math.max(0, -row.valueCents),
+        ...assumption,
+      });
+    } else if (byAccounts && included.has(row.account.id)) {
+      pots.retirementCents += row.valueCents;
+    } else if (row.band === HOLDING_CLASSES.CASH) {
+      pots.cashCents += row.valueCents;
+    } else if (row.band === HOLDING_CLASSES.INVESTED) {
+      pots.investedCents += row.valueCents;
+    } else {
+      properties.push({ id: row.account.id, name: row.account.name, valueCents: row.valueCents });
+    }
+  }
+
+  // The budget's estimates, a year of each. Everything that is not saving is
+  // spending — essentials and fun, and any category in no bucket at all.
+  const bucketTotal = (bucket) =>
+    budgets
+      .filter((budget) => budget.bucket === bucket)
+      .reduce((sum, budget) => sum + budget.plannedCents, 0) * 12;
+  const savingsCents = bucketTotal(PLAN_BUCKETS.SAVINGS);
+  const spendingCents =
+    budgets.reduce((sum, budget) => sum + budget.plannedCents, 0) * 12 -
+    savingsCents -
+    budgetContributionCents;
+  // The contribution is split back into its two halves, because only one of
+  // them comes out of take-home pay. An override replaces the total; the
+  // pretax part of it is what payroll takes, the rest comes from the budget.
+  const pretaxRetirementCents = Math.min(pretaxContributionCents, annualContributionCents);
+  const afterTaxRetirementCents = annualContributionCents - pretaxRetirementCents;
+
+  const netWorth = projectNetWorth({
+    currentAge: plan.currentAge,
+    retirementAge: plan.retirementAge,
+    lifeExpectancy: plan.lifeExpectancy,
+    pots,
+    properties,
+    debts: debtRows.map((row) => ({
+      id: row.account.id,
+      name: row.account.name,
+      owedCents: row.owedCents,
+      rateBps: row.rateBps,
+      monthlyPaymentCents: row.monthlyPaymentCents,
+    })),
+    income: {
+      source: plan.incomeSource,
+      takeHomeAnnualCents: incomeAnnualCents,
+      growthRateBps: plan.incomeGrowthRateBps,
+      salaries: plan.salaries,
+      workingTaxRateBps: plan.workingTaxRateBps,
+    },
+    spendingCents,
+    savingsCents,
+    afterTaxRetirementCents,
+    pretaxRetirementCents,
+    retirementSpendingCents: annualSpendingCents,
+    retirementTaxRateBps: plan.retirementTaxRateBps,
+    growthRateBps: plan.growthRateBps,
+    drawdownRateBps: plan.drawdownRateBps,
+    inflationRateBps: plan.inflationRateBps,
+    cashRateBps: plan.cashRateBps,
+    propertyRateBps: plan.propertyRateBps,
+    events,
+  });
+
+  return {
+    plan,
+    accountRows,
+    // Every resolved input, reported alongside the projection so the page can
+    // show its working: which figure was used, and whether it was seeded or
+    // typed.
+    inputs: {
+      startingCents,
+      selectedCents,
+      incomeAnnualCents,
+      shareSpendingCents,
+      annualSpendingCents,
+      annualContributionCents,
+      budgetContributionCents,
+      pretaxContributionCents,
+      plannedContributionCents,
+      contributionSeeded: plan.annualContributionCents == null,
+      spendingCents,
+      savingsCents,
+      pots,
+    },
+    debtRows,
+    netWorth,
+    // What a sale or a purchase can name.
+    propertyOptions: properties.map((property) => ({ id: property.id, name: property.name })),
+    debtOptions: debtRows.map((row) => ({ id: row.account.id, name: row.account.name })),
+    // The retirement question, asked of the whole balance sheet: see
+    // `retirementOutlook`. `projectRetirement` above is no longer what the
+    // page reads; it stays as the pure function the reproduction tripwire
+    // in `netWorthProjection.test.js` holds the new walk to.
+    projection: retirementOutlook(netWorth, {
+      currentAge: plan.currentAge,
+      retirementAge: plan.retirementAge,
+      lifeExpectancy: plan.lifeExpectancy,
+      retirementSpendingCents: annualSpendingCents,
+      retirementTaxRateBps: plan.retirementTaxRateBps,
+      currentContributionCents: annualContributionCents,
+    }),
+  };
+}
+
 export default function useRetirementProjection() {
   const { plan } = useRetirement();
   const { budgets } = useBudgets();
@@ -264,183 +454,22 @@ export default function useRetirementProjection() {
   // worth today, and `useNetWorth` is the only definition of that.
   const { rows } = useNetWorth(currentPeriod(), { months: 1 });
 
-  return useMemo(() => {
-    const included = new Set(plan.accountIds);
-    const accountRows = rows.map((row) => ({
-      account: row.account,
-      valueCents: row.valueCents,
-      included: included.has(row.account.id),
-      // Where the figure came from matters here as much as on the net-worth
-      // page: an account last valued in March is being counted at March's
-      // figure, and a plan built on it should say so.
-      hand: row.hand,
-      asOf: row.asOf,
-    }));
-
-    // Signed, so a liability someone chooses to count — a loan against the
-    // portfolio — subtracts, on the one sign convention the balance sheet uses
-    // everywhere else.
-    const selectedCents = accountRows
-      .filter((row) => row.included)
-      .reduce((sum, row) => sum + row.valueCents, 0);
-
-    const startingCents =
-      plan.startingSource === STARTING_SOURCES.MANUAL
-        ? plan.startingBalanceCents ?? 0
-        : selectedCents;
-
-    const incomeAnnualCents = expectedMonthlyCents * 12;
-    const shareSpendingCents = Math.round(incomeAnnualCents * fromBps(plan.incomeShareBps));
-    const annualSpendingCents =
-      plan.spendingSource === SPENDING_SOURCES.MANUAL
-        ? plan.annualSpendingCents ?? 0
-        : shareSpendingCents;
-
-    // What the budget already puts aside for retirement specifically,
-    // annualised — the retirement bucket is the app's existing answer to "what
-    // am I setting aside for this", so a plan that has not been told otherwise
-    // uses it rather than assuming nothing is being saved. Deliberately not the
-    // savings bucket: a house deposit or emergency fund sits there too, and
-    // counting it here would overstate what is actually earmarked for
-    // retirement. This is only the after-tax half — see the doc comment above.
-    const budgetContributionCents =
-      budgets
-        .filter((budget) => budget.bucket === PLAN_BUCKETS.RETIREMENT)
-        .reduce((sum, budget) => sum + budget.plannedCents, 0) * 12;
-    // The pre-tax half: typed, never derived, and simply zero for a household
-    // with no payroll retirement plan.
-    const pretaxContributionCents = plan.pretaxContributionCents ?? 0;
-    const plannedContributionCents = budgetContributionCents + pretaxContributionCents;
-    const annualContributionCents = plan.annualContributionCents ?? plannedContributionCents;
-
-    // ── The whole balance sheet, for `projectNetWorth` ──
-    //
-    // Every account lands in exactly one pot, so the projection starts from
-    // the same net worth the Net worth page shows today. A liability is a debt
-    // whatever the plan says about it; a ticked asset is retirement money; the
-    // rest go to their band. With a typed starting figure the ticked accounts
-    // are back in their bands and the figure is the retirement pot — it stands
-    // for money the app does not track, so nothing it covers is counted twice.
-    const byAccounts = plan.startingSource !== STARTING_SOURCES.MANUAL;
-    const pots = {
-      cashCents: 0,
-      investedCents: 0,
-      retirementCents: byAccounts ? 0 : plan.startingBalanceCents ?? 0,
-    };
-    // Each property on its own, because a sale names one.
-    const properties = [];
-    const debtRows = [];
-    for (const row of rows) {
-      if (row.band === HOLDING_CLASSES.DEBT) {
-        const assumption = plan.debtAssumptions[row.account.id] ?? {
-          rateBps: 0,
-          monthlyPaymentCents: 0,
-        };
-        debtRows.push({
-          account: row.account,
-          owedCents: Math.max(0, -row.valueCents),
-          ...assumption,
-        });
-      } else if (byAccounts && included.has(row.account.id)) {
-        pots.retirementCents += row.valueCents;
-      } else if (row.band === HOLDING_CLASSES.CASH) {
-        pots.cashCents += row.valueCents;
-      } else if (row.band === HOLDING_CLASSES.INVESTED) {
-        pots.investedCents += row.valueCents;
-      } else {
-        properties.push({ id: row.account.id, name: row.account.name, valueCents: row.valueCents });
-      }
-    }
-
-    // The budget's estimates, a year of each. Everything that is not saving is
-    // spending — essentials and fun, and any category in no bucket at all.
-    const bucketTotal = (bucket) =>
-      budgets
-        .filter((budget) => budget.bucket === bucket)
-        .reduce((sum, budget) => sum + budget.plannedCents, 0) * 12;
-    const savingsCents = bucketTotal(PLAN_BUCKETS.SAVINGS);
-    const spendingCents =
-      budgets.reduce((sum, budget) => sum + budget.plannedCents, 0) * 12 -
-      savingsCents -
-      budgetContributionCents;
-    // The contribution is split back into its two halves, because only one of
-    // them comes out of take-home pay. An override replaces the total; the
-    // pretax part of it is what payroll takes, the rest comes from the budget.
-    const pretaxRetirementCents = Math.min(pretaxContributionCents, annualContributionCents);
-    const afterTaxRetirementCents = annualContributionCents - pretaxRetirementCents;
-
-    const netWorth = projectNetWorth({
-      currentAge: plan.currentAge,
-      retirementAge: plan.retirementAge,
-      lifeExpectancy: plan.lifeExpectancy,
-      pots,
-      properties,
-      debts: debtRows.map((row) => ({
-        id: row.account.id,
-        name: row.account.name,
-        owedCents: row.owedCents,
-        rateBps: row.rateBps,
-        monthlyPaymentCents: row.monthlyPaymentCents,
-      })),
-      income: {
-        source: plan.incomeSource,
-        takeHomeAnnualCents: incomeAnnualCents,
-        growthRateBps: plan.incomeGrowthRateBps,
-        salaries: plan.salaries,
-        workingTaxRateBps: plan.workingTaxRateBps,
-      },
-      spendingCents,
-      savingsCents,
-      afterTaxRetirementCents,
-      pretaxRetirementCents,
-      retirementSpendingCents: annualSpendingCents,
-      retirementTaxRateBps: plan.retirementTaxRateBps,
-      growthRateBps: plan.growthRateBps,
-      drawdownRateBps: plan.drawdownRateBps,
-      inflationRateBps: plan.inflationRateBps,
-      cashRateBps: plan.cashRateBps,
-      propertyRateBps: plan.propertyRateBps,
-      events,
-    });
-
-    return {
-      plan,
-      accountRows,
-      // Every resolved input, reported alongside the projection so the page can
-      // show its working: which figure was used, and whether it was seeded or
-      // typed.
-      inputs: {
-        startingCents,
-        selectedCents,
-        incomeAnnualCents,
-        shareSpendingCents,
-        annualSpendingCents,
-        annualContributionCents,
-        budgetContributionCents,
-        pretaxContributionCents,
-        plannedContributionCents,
-        contributionSeeded: plan.annualContributionCents == null,
-        spendingCents,
-        savingsCents,
-        pots,
-      },
-      debtRows,
-      netWorth,
-      // What a sale or a purchase can name.
-      propertyOptions: properties.map((property) => ({ id: property.id, name: property.name })),
-      debtOptions: debtRows.map((row) => ({ id: row.account.id, name: row.account.name })),
-      // The retirement question, asked of the whole balance sheet: see
-      // `retirementOutlook`. `projectRetirement` above is no longer what the
-      // page reads; it stays as the pure function the reproduction tripwire
-      // in `netWorthProjection.test.js` holds the new walk to.
-      projection: retirementOutlook(netWorth, {
-        currentAge: plan.currentAge,
-        retirementAge: plan.retirementAge,
-        lifeExpectancy: plan.lifeExpectancy,
-        retirementSpendingCents: annualSpendingCents,
-        retirementTaxRateBps: plan.retirementTaxRateBps,
-        currentContributionCents: annualContributionCents,
+  // The same books under another plan or another set of events — what a
+  // scenario and the sensitivity table are made of.
+  const resolveWith = useCallback(
+    (otherPlan, otherEvents = events) =>
+      resolveProjection({
+        plan: otherPlan,
+        events: otherEvents,
+        rows,
+        budgets,
+        expectedMonthlyCents,
       }),
-    };
-  }, [plan, rows, budgets, expectedMonthlyCents, events]);
+    [events, rows, budgets, expectedMonthlyCents]
+  );
+
+  return useMemo(
+    () => ({ ...resolveWith(plan), resolveWith }),
+    [plan, resolveWith]
+  );
 }

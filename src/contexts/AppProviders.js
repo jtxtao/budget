@@ -12,6 +12,7 @@ import { SavingsGoalAssignmentsProvider } from "./SavingsGoalAssignmentsContext"
 import { SchedulesProvider } from "./SchedulesContext";
 import { EmergencyFundProvider } from "./EmergencyFundContext";
 import { LifeEventsProvider } from "./LifeEventsContext";
+import { ScenariosProvider } from "./ScenariosContext";
 
 // Composes every store in one place so index.js and the tests wrap the app the
 // same way, and adding a store does not mean editing both.
@@ -83,6 +84,11 @@ import { LifeEventsProvider } from "./LifeEventsContext";
 // other store's record — one copied from a savings goal is copied once, not
 // linked — and nothing deletes into it, so its position here is free.
 //
+// Scenarios is independent in both directions as well: a saved scenario is a
+// copy of the retirement plan and a list of life-event ids, named by id and
+// never read back from those stores, so a deleted event is inert in it and
+// nothing cascades either way. Using one is the page's write, not the store's.
+//
 // SavingsGoals is independent of every other store: a goal names no category,
 // no account, and no transaction, so nothing outside this pair deletes into or
 // out of it. SavingsGoalAssignments is the money-actually-put-in half of a
@@ -106,7 +112,9 @@ export default function AppProviders({ children }) {
                         <SavingsGoalsProvider>
                           <SchedulesProvider>
                             <EmergencyFundProvider>
-                              <LifeEventsProvider>{children}</LifeEventsProvider>
+                              <LifeEventsProvider>
+                                <ScenariosProvider>{children}</ScenariosProvider>
+                              </LifeEventsProvider>
                             </EmergencyFundProvider>
                           </SchedulesProvider>
                         </SavingsGoalsProvider>

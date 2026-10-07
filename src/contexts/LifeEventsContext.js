@@ -258,6 +258,16 @@ export const LifeEventsProvider = ({ children }) => {
     [setEvents]
   );
 
+  /** Switch on exactly these events and off every other — a scenario used. */
+  const setEnabledEvents = useCallback(
+    (ids) => {
+      const on = new Set(ids);
+      setEvents((previous) => previous.map((event) => ({ ...event, enabled: on.has(event.id) })));
+      return { ok: true };
+    },
+    [setEvents]
+  );
+
   const deleteLifeEvent = useCallback(
     (id) => {
       setEvents((previous) => previous.filter((event) => event.id !== id));
@@ -267,8 +277,15 @@ export const LifeEventsProvider = ({ children }) => {
   );
 
   const value = useMemo(
-    () => ({ events, addLifeEvent, updateLifeEvent, setLifeEventEnabled, deleteLifeEvent }),
-    [events, addLifeEvent, updateLifeEvent, setLifeEventEnabled, deleteLifeEvent]
+    () => ({
+      events,
+      addLifeEvent,
+      updateLifeEvent,
+      setLifeEventEnabled,
+      setEnabledEvents,
+      deleteLifeEvent,
+    }),
+    [events, addLifeEvent, updateLifeEvent, setLifeEventEnabled, setEnabledEvents, deleteLifeEvent]
   );
 
   return <LifeEventsContext.Provider value={value}>{children}</LifeEventsContext.Provider>;

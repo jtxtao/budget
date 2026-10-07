@@ -3,7 +3,7 @@
 Built. Steps 1–5 are done: the whole-balance-sheet projection (`src/netWorthProjection.js`)
 and its assumptions; life events (expenses, income, pay changes, buying and selling a home)
 with templates and a savings-goal shortcut; the net-worth-by-age chart; and the outlook read
-off the walk. Step 6 (scenarios and beyond) is what is left. Three decisions
+off the walk. Scenarios are built too; what is left of step 6 is per-event inflation and Monte Carlo. Three decisions
 here were made in conversation rather than deduced from the code, and they are the ones to
 keep if the rest is revisited: the projection is **full net worth**, not the retirement pot
 alone; future income is **either today's take-home grown by a rate or gross salaries entered
@@ -84,4 +84,6 @@ it out, which is what "with kids / without" and later Scenarios are built on.
 5. ~~The page: stacked chart by band over age with event markers, the outlook read off this
    projection.~~ Done: `NetWorthByAgeChart`, and `retirementOutlook` — liquid money at
    retirement against the discounted draws of the retired years, grossed for tax.
-6. Later: scenarios, per-event inflation (college), Monte Carlo.
+6. ~~Scenarios~~ Done: up to four saved snapshots of the plan with the events that were on,
+   compared on one chart and table beside the current plan, plus a sensitivity table (each
+   rate ±1 point). Still to do: per-event inflation (college), Monte Carlo.
