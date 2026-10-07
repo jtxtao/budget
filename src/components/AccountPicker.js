@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { isOffBudget, scopeLabel } from "../contexts/AccountsContext";
-import { formatCents, formatPeriod } from "../utils";
+import { amountAtRest, amountEditing, formatCents, formatPeriod, toCents } from "../utils";
 
 /**
  * Which accounts count towards something, ticked off a list with their values
@@ -16,6 +16,13 @@ import { formatCents, formatPeriod } from "../utils";
  *
  * Nothing here is editable beyond the tick. The values are `useNetWorth`'s, and
  * an account is corrected where it is owned — on the balance sheet.
+ *
+ * **`onPortionChange` adds a column for counting part of an account.** The
+ * emergency fund passes it, because a buffer is usually a slice of an ordinary
+ * savings account rather than an account of its own; the retirement picker does
+ * not, since retirement money is an account's whole balance by nature. A blank
+ * field is the whole account, it commits on blur like every panel outside a
+ * modal, and it is keyed on the stored figure so a refused edit re-seeds it.
  *
  * `holdingsFirst` is the one thing the two callers disagree about, and it is a
  * question about which accounts the panel is *usually* about rather than about
@@ -33,7 +40,41 @@ function sourceNote(row) {
   return `Valued ${formatPeriod(row.asOf)}`;
 }
 
-function AccountRow({ row, striped, onToggle }) {
+/**
+ * The part of a ticked account that counts. Formatted at rest and raw under the
+ * caret, the two faces every money field wears.
+ */
+function PortionField({ row, onPortionChange }) {
+  const stored = row.portionCents;
+  return (
+    <input
+      key={`portion-${row.account.id}-${stored ?? ""}`}
+      type="text"
+      inputMode="decimal"
+      aria-label={`Amount of ${row.account.name} counted`}
+      placeholder="All of it"
+      disabled={!row.included}
+      defaultValue={stored == null ? "" : amountAtRest(stored)}
+      onFocus={(event) => {
+        const cents = toCents(event.target.value);
+        if (cents != null) event.target.value = amountEditing(cents);
+        event.target.select();
+      }}
+      onBlur={(event) => {
+        const typed = event.target.value;
+        const result = onPortionChange({ accountId: row.account.id, amount: typed });
+        // Refused figures stay to be corrected; a taken one is shown formatted.
+        if (result?.ok) {
+          const cents = toCents(typed);
+          event.target.value = typed.trim() === "" || cents == null ? "" : amountAtRest(cents);
+        }
+      }}
+      className="w-28 border-0 border-b border-transparent bg-transparent px-0 py-0.5 text-right font-mono text-row tabular-nums text-ink outline-none placeholder:text-ink-soft/70 hover:border-rule focus:border-azure disabled:opacity-40"
+    />
+  );
+}
+
+function AccountRow({ row, striped, onToggle, onPortionChange }) {
   return (
     <tr className={striped ? "bg-sheet-alt" : "bg-sheet"}>
       <th scope="row" className="px-4 py-2 text-left font-sans text-row font-normal text-ink">
@@ -59,6 +100,11 @@ function AccountRow({ row, striped, onToggle }) {
       >
         {formatCents(row.valueCents)}
       </td>
+      {onPortionChange && (
+        <td className="whitespace-nowrap px-3 py-2 text-right">
+          <PortionField row={row} onPortionChange={onPortionChange} />
+        </td>
+      )}
     </tr>
   );
 }
@@ -70,6 +116,7 @@ export default function AccountPicker({
   emptyNote,
   holdingsFirst = false,
   onToggle,
+  onPortionChange,
 }) {
   const ordered = holdingsFirst
     ? [...rows.filter((row) => isOffBudget(row.account)), ...rows.filter((row) => !isOffBudget(row.account))]
@@ -101,6 +148,11 @@ export default function AccountPicker({
             <th scope="col" className="px-3 py-2 text-right font-mono text-label uppercase text-chalk">
               Value
             </th>
+            {onPortionChange && (
+              <th scope="col" className="px-3 py-2 text-right font-mono text-label uppercase text-chalk">
+                Counted
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -110,6 +162,7 @@ export default function AccountPicker({
               row={row}
               striped={index % 2 === 1}
               onToggle={onToggle}
+              onPortionChange={onPortionChange}
             />
           ))}
         </tbody>
@@ -119,6 +172,7 @@ export default function AccountPicker({
               {totalLabel}
             </th>
             <td />
+            {onPortionChange && <td />}
             <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-row font-medium tabular-nums text-chalk">
               {formatCents(totalCents)}
             </td>

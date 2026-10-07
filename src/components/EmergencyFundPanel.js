@@ -96,7 +96,13 @@ function Figure({ label, cents, tone = "text-chalk", note }) {
   );
 }
 
-export default function EmergencyFundPanel({ fund, error, onChange, onToggleAccount }) {
+export default function EmergencyFundPanel({
+  fund,
+  error,
+  onChange,
+  onToggleAccount,
+  onAccountAmountChange,
+}) {
   const byMonths = fund.fund.targetSource === TARGET_SOURCES.MONTHS;
   const funded = fund.fundedBps == null ? null : fromBps(fund.fundedBps);
   const monthsHeld = fund.monthsHeldBps == null ? null : fromBps(fund.monthsHeldBps);
@@ -252,7 +258,14 @@ export default function EmergencyFundPanel({ fund, error, onChange, onToggleAcco
         totalCents={fund.heldCents}
         emptyNote="an emergency fund is usually an ordinary savings account, and this needs one to read a balance off."
         onToggle={onToggleAccount}
+        onPortionChange={onAccountAmountChange}
       />
+      {onAccountAmountChange && fund.accountRows.some((row) => row.included) && (
+        <p className="border-t border-edge px-4 py-3 font-sans text-row text-chalk-soft">
+          A ticked account counts in full. If only part of it is your emergency fund — the rest
+          is for something else — enter that part under Counted.
+        </p>
+      )}
 
       {error && (
         <p role="alert" className="border-t border-edge px-4 py-3 font-sans text-row text-vermilion">

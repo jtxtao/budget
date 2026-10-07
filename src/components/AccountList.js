@@ -1,5 +1,5 @@
 import Button from "./Button";
-import { ACCOUNT_SCOPES, ACCOUNT_TYPES, UNCLASSIFIED } from "../contexts/AccountsContext";
+import { ACCOUNT_SCOPES, ACCOUNT_TYPES } from "../contexts/AccountsContext";
 import { formatCents } from "../utils";
 
 /**
@@ -30,16 +30,7 @@ import { formatCents } from "../utils";
  * balance for, so a caller that has none simply gets the names.
  */
 
-/** "Cash" — the asset class, where the account has one worth stating. */
-function accountNote(account) {
-  // Meaningless on a liability, and stored as unclassified on one.
-  if (account.type !== ACCOUNT_TYPES.ASSET || account.assetClass === UNCLASSIFIED) return "";
-  return account.assetClass;
-}
-
 function AccountRow({ account, balanceCents, striped, onEdit, onDelete }) {
-  const note = accountNote(account);
-
   // One definition of trouble, as in the category table: an account that is
   // *owned* and has gone under. A debt is negative by definition — red on each
   // would say nothing about any of them — while a current account below zero is
@@ -52,9 +43,6 @@ function AccountRow({ account, balanceCents, striped, onEdit, onDelete }) {
     >
       <div className="min-w-0 flex-1">
         <div className="truncate font-sans text-row text-ink">{account.name}</div>
-        {note && (
-          <div className="truncate font-mono text-label uppercase text-ink-soft">{note}</div>
-        )}
       </div>
       {balanceCents != null && (
         <div

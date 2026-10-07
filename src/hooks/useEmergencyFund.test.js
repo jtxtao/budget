@@ -78,6 +78,13 @@ function setup() {
         result.current.store.toggleFundAccount({ accountId, included });
       });
     },
+    portion: (accountId, amount) => {
+      let outcome;
+      act(() => {
+        outcome = result.current.store.setFundAccountAmount({ accountId, amount });
+      });
+      return outcome;
+    },
   };
 }
 
@@ -220,6 +227,46 @@ describe("what is held", () => {
     expect(fromBps(read().fundedBps)).toBeCloseTo(1.754, 3);
   });
 
+  test("part of an account can be the fund, never more than the account holds", () => {
+    seed();
+    const { read, toggle, portion } = setup();
+    toggle("acc-save", true);
+
+    // Most households keep the buffer inside an ordinary savings account, so a
+    // stated part is what counts — and blank goes back to the whole balance.
+    expect(portion("acc-save", "$5,000")).toEqual({ ok: true });
+    expect(read().heldCents).toBe(500000);
+    expect(read().accountRows.find((row) => row.account.id === "acc-save")).toMatchObject({
+      valueCents: 900000,
+      portionCents: 500000,
+      countedCents: 500000,
+    });
+
+    // An earmark larger than the balance counts what is actually there.
+    portion("acc-save", "12000");
+    expect(read().heldCents).toBe(900000);
+
+    // Unticking keeps the earmark; it simply counts towards nothing.
+    toggle("acc-save", false);
+    expect(read().heldCents).toBe(0);
+    expect(read().fund.accountAmounts).toEqual({ "acc-save": 1200000 });
+
+    toggle("acc-save", true);
+    portion("acc-save", "");
+    expect(read().heldCents).toBe(900000);
+    expect(read().fund.accountAmounts).toEqual({});
+  });
+
+  test("a part that is not a positive figure is refused and changes nothing", () => {
+    seed({ emergencyFund: { accountIds: ["acc-save"], accountAmounts: { "acc-save": 300000 } } });
+    const { read, portion } = setup();
+
+    expect(portion("acc-save", "lots").ok).toBe(false);
+    expect(portion("acc-save", "0").ok).toBe(false);
+    expect(portion("acc-save", "-50").ok).toBe(false);
+    expect(read().heldCents).toBe(300000);
+  });
+
   test("an account that has since been deleted is inert rather than an error", () => {
     seed({ emergencyFund: { targetSource: "months", monthsCovered: 6, accountIds: ["gone"] } });
     const { read } = setup();
@@ -241,6 +288,7 @@ describe("what is stored", () => {
       monthsCovered: 6,
       targetCents: null,
       accountIds: [],
+      accountAmounts: {},
     });
   });
 
@@ -256,6 +304,7 @@ describe("what is stored", () => {
       monthsCovered: 9,
       targetCents: 2500000,
       accountIds: [],
+      accountAmounts: {},
     });
   });
 });

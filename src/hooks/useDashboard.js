@@ -135,8 +135,8 @@ export default function useDashboard(period) {
       periodBudgetedCents: envelopes.periodAssignedCents,
       // A magnitude, unlike the rows' signed `activityCents`: this one is
       // labelled "spent this month", which is a quantity rather than a movement.
-      // Gross, too — the tile says what went out, and the money that came back
-      // has its own place in the meter beside it.
+      // Gross here, with the refunds beside it: the page nets one off the other
+      // for the tile, and keeps both so the note can say how much came back.
       periodSpentCents: envelopes.periodSpentCents,
       periodRefundCents: envelopes.periodRefundCents,
       totalAvailableCents: envelopes.totalAvailableCents,

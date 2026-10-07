@@ -36,6 +36,16 @@ import { toCents } from "../utils";
  * reaching into another one. An id whose account was deleted reads as an account
  * contributing nothing.
  *
+ * **A ticked account counts whole unless the household says how much of it is
+ * the fund.** `accountAmounts` maps an account id to the part of its balance
+ * set aside, because almost nobody opens an account *only* for this: the buffer
+ * is usually the first ten thousand of an ordinary savings account that also
+ * holds the holiday money. Absent means the whole balance, which is what a tick
+ * meant before the field existed — so a record stored without it reads exactly
+ * as it always did. An amount is kept when its account is unticked, the
+ * switched-away-from rule, and like `accountIds` it is never checked against
+ * the live accounts.
+ *
  * A single record with a whole-value guard rather than a field-presence
  * migration, like `PayScheduleContext` and `RetirementContext`: this is one
  * record, not a list of them, and anything unreadable reads as "not set up yet".
@@ -77,6 +87,10 @@ export const DEFAULT_FUND = {
   // is a judgement, and guessing it would put a figure on screen the household
   // never agreed to. `RetirementContext`'s reasoning for the same field.
   accountIds: [],
+  // id -> cents of that account counted as the fund. Missing is the whole
+  // balance; there is no "zero" entry, since an account contributing nothing is
+  // one that is not ticked.
+  accountAmounts: {},
 };
 
 export function useEmergencyFundPlan() {
@@ -101,7 +115,18 @@ function migrateFund(stored) {
     accountIds: Array.isArray(fund.accountIds)
       ? [...new Set(fund.accountIds.filter((id) => typeof id === "string"))]
       : [],
+    accountAmounts: readAmounts(fund.accountAmounts),
   };
+}
+
+/** Only well-formed entries survive: a string id and a positive whole figure. */
+function readAmounts(stored) {
+  const amounts = {};
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) return amounts;
+  for (const [id, cents] of Object.entries(stored)) {
+    if (isAmount(cents)) amounts[id] = cents;
+  }
+  return amounts;
 }
 
 const isBlank = (value) =>
@@ -186,9 +211,44 @@ export const EmergencyFundProvider = ({ children }) => {
     [setFund]
   );
 
+  /**
+   * How much of one account is the fund. Blank puts the account back to
+   * counting whole — the way a portion is *removed*, so a blank is never read
+   * as a refused figure; junk, zero and a negative are refused, since a part of
+   * nothing is not a part.
+   */
+  const setFundAccountAmount = useCallback(
+    ({ accountId, amount }) => {
+      if (typeof accountId !== "string") {
+        return { ok: false, error: "Choose which account the amount is for." };
+      }
+
+      let cents = null;
+      if (!isBlank(amount)) {
+        cents = typeof amount === "number" ? amount : toCents(amount);
+        if (!isAmount(cents)) {
+          return {
+            ok: false,
+            error: "Enter how much of the account is the fund, or leave it blank to count all of it.",
+          };
+        }
+      }
+
+      setFund((previous) => {
+        const { [accountId]: _dropped, ...rest } = previous.accountAmounts ?? {};
+        return {
+          ...previous,
+          accountAmounts: cents == null ? rest : { ...rest, [accountId]: cents },
+        };
+      });
+      return { ok: true };
+    },
+    [setFund]
+  );
+
   const value = useMemo(
-    () => ({ fund, setEmergencyFund, toggleFundAccount }),
-    [fund, setEmergencyFund, toggleFundAccount]
+    () => ({ fund, setEmergencyFund, toggleFundAccount, setFundAccountAmount }),
+    [fund, setEmergencyFund, toggleFundAccount, setFundAccountAmount]
   );
 
   return <EmergencyFundContext.Provider value={value}>{children}</EmergencyFundContext.Provider>;

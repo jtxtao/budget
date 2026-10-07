@@ -181,27 +181,39 @@ function AccountControl() {
  * A permanent "Saved" badge is a light that is always on, which is a light
  * nobody reads. Idle shows nothing; the two states worth interrupting for are
  * "still going" and "not landing".
+ *
+ * **The slot is always there, and always as wide as its widest message.** Both
+ * labels sit in one grid cell and only visibility changes, so a badge coming
+ * and going cannot reflow the header — before this, every save shoved the
+ * account controls and the dark-mode switch sideways and back. The live region
+ * stays mounted for the same reason a screen reader needs it to: a status that
+ * appears with its own container is often not announced at all.
  */
 function SyncBadge({ state }) {
-  if (state === SYNC_STATE.SAVING) {
-    return (
-      <span role="status" className="font-mono text-label uppercase text-on-canopy-soft">
+  const saving = state === SYNC_STATE.SAVING;
+  const offline = state === SYNC_STATE.OFFLINE;
+
+  return (
+    <span role="status" className="inline-grid items-center">
+      <span
+        aria-hidden={!saving}
+        className={`col-start-1 row-start-1 px-2 py-0.5 text-center font-mono text-label uppercase text-on-canopy-soft ${
+          saving ? "" : "invisible"
+        }`}
+      >
         Saving…
       </span>
-    );
-  }
-  if (state === SYNC_STATE.OFFLINE) {
-    return (
       <span
-        role="status"
+        aria-hidden={!offline}
         title={`Your edits are safe ${
           isDesktop() ? "on this computer" : "in this browser"
         } and will be sent when the connection is back.`}
-        className="border border-on-canopy-rust/60 px-2 py-0.5 font-mono text-label uppercase text-on-canopy-rust"
+        className={`col-start-1 row-start-1 border border-on-canopy-rust/60 px-2 py-0.5 text-center font-mono text-label uppercase text-on-canopy-rust ${
+          offline ? "" : "invisible"
+        }`}
       >
         Not saved
       </span>
-    );
-  }
-  return null;
+    </span>
+  );
 }

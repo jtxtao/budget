@@ -106,7 +106,7 @@ export default function ConfigurationPage() {
   const { accounts, deleteAccount } = useAccounts();
   const { schedule, setPaySchedule } = usePaySchedule();
   const { plan, setRetirementPlan } = useRetirement();
-  const { setEmergencyFund, toggleFundAccount } = useEmergencyFundPlan();
+  const { setEmergencyFund, toggleFundAccount, setFundAccountAmount } = useEmergencyFundPlan();
 
   const health = usePlanHealth();
   const fund = useEmergencyFund();
@@ -215,6 +215,12 @@ export default function ConfigurationPage() {
     setFundError(result.ok ? null : result.error);
   }
 
+  function handleFundAccountAmount(change) {
+    const result = setFundAccountAmount(change);
+    setFundError(result.ok ? null : result.error);
+    return result;
+  }
+
   function handlePretaxChange(pretaxContributionCents) {
     const result = setRetirementPlan({ pretaxContributionCents });
     setPretaxError(result.ok ? null : result.error);
@@ -260,6 +266,34 @@ export default function ConfigurationPage() {
           stretched to match the taller one. */}
       <div className="mt-4 grid items-start gap-x-5 gap-y-8 lg:grid-cols-3">
         <div className="lg:col-span-2">
+          {/* Income leads the column: it is what the categories below are
+              planned against, so the money coming in is stated before the
+              money it is divided into. */}
+          <div className="mb-8 space-y-3">
+            <ExpectedIncomeTable
+              rows={health.incomeRows}
+              expectedIncomeCents={health.expectedIncomeCents}
+              pretaxMonthlyCents={health.pretaxMonthlyCents}
+              onDelete={deleteIncomeSource}
+              actions={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAddIncomeSourceModal(true)}
+                >
+                  Add income source
+                </Button>
+              }
+            />
+            {/* Under the income it belongs to, and the only dated thing on the
+                page: the table above says how much arrives, this says when. */}
+            <PaySchedulePanel
+              schedule={schedule}
+              paycheck={paycheck}
+              error={payError}
+              onChange={handlePayScheduleChange}
+            />
+          </div>
           <ColumnHeading title="Categories">
             <Button
               variant="primary"
@@ -308,31 +342,6 @@ export default function ConfigurationPage() {
             />
           )}
 
-          <div className="mt-8 space-y-3">
-            <ExpectedIncomeTable
-              rows={health.incomeRows}
-              expectedIncomeCents={health.expectedIncomeCents}
-              pretaxMonthlyCents={health.pretaxMonthlyCents}
-              onDelete={deleteIncomeSource}
-              actions={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowAddIncomeSourceModal(true)}
-                >
-                  Add income source
-                </Button>
-              }
-            />
-            {/* Under the income it belongs to, and the only dated thing on the
-                page: the table above says how much arrives, this says when. */}
-            <PaySchedulePanel
-              schedule={schedule}
-              paycheck={paycheck}
-              error={payError}
-              onChange={handlePayScheduleChange}
-            />
-          </div>
         </div>
 
         <div>
@@ -368,6 +377,7 @@ export default function ConfigurationPage() {
           error={fundError}
           onChange={handleFundChange}
           onToggleAccount={toggleFundAccount}
+          onAccountAmountChange={handleFundAccountAmount}
         />
       </div>
 

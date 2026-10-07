@@ -849,24 +849,28 @@ describe("adding an account", () => {
     expect(screen.getByLabelText(/budgeting/i)).toHaveValue("off-budget");
   });
 
-  test("asset class is asked for on an asset and not on a debt", () => {
+  test("the asset class is not asked, of an asset or of a debt", () => {
     renderHarness();
 
     fireEvent.click(screen.getByText("open on-budget"));
     expect(screen.getByLabelText(/kind/i)).toHaveValue("asset");
-    expect(screen.getByLabelText(/asset class/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/asset class/i)).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/kind/i), { target: { value: "liability" } });
     expect(screen.queryByLabelText(/asset class/i)).not.toBeInTheDocument();
   });
 
-  test("an asset stores its class and scope, and a liability stores unclassified", () => {
+  test("an asset's class is read off its scope, and a liability stores unclassified", () => {
     renderHarness();
+
+    // An on-budget asset is cash: money the budget spends through.
+    fireEvent.click(screen.getByText("open on-budget"));
+    fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: "Everyday" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
 
     // An off-budget asset: the 401(k) case this split exists for.
     fireEvent.click(screen.getByText("open off-budget"));
     fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: "Brokerage" } });
-    fireEvent.change(screen.getByLabelText(/asset class/i), { target: { value: "Stocks" } });
     fireEvent.change(screen.getByLabelText(/starting balance/i), { target: { value: "12000" } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
 
@@ -878,6 +882,16 @@ describe("adding an account", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
 
     expect(JSON.parse(localStorage.getItem("accounts"))).toEqual([
+      {
+        id: expect.any(String),
+        name: "Everyday",
+        type: "asset",
+        scope: "on-budget",
+        assetClass: "Cash",
+        openingBalanceCents: 0,
+        openingDate: todayISO(),
+        reconciledOn: null,
+      },
       {
         id: expect.any(String),
         name: "Brokerage",
@@ -933,7 +947,7 @@ describe("adding an account", () => {
 
     fireEvent.click(screen.getByText("open on-budget"));
     fireEvent.change(screen.getByLabelText(/kind/i), { target: { value: "liability" } });
-    expect(screen.queryByLabelText(/asset class/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/balance owed/i)).toBeInTheDocument();
 
     // The select is unmounted while the card is chosen and comes back holding
     // its default, so what the form thinks was chosen has to come back with it.
@@ -941,7 +955,6 @@ describe("adding an account", () => {
     fireEvent.change(screen.getByLabelText(/budgeting/i), { target: { value: "on-budget" } });
 
     expect(screen.getByLabelText(/kind/i)).toHaveValue("asset");
-    expect(screen.getByLabelText(/asset class/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/starting balance/i)).toBeInTheDocument();
   });
 
@@ -961,7 +974,6 @@ describe("adding an account", () => {
 
     fireEvent.click(screen.getByText("open off-budget"));
     fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: "Brokerage" } });
-    fireEvent.change(screen.getByLabelText(/asset class/i), { target: { value: "Stocks" } });
     fireEvent.change(screen.getByLabelText(/starting balance/i), { target: { value: "12000" } });
     fireEvent.change(screen.getByLabelText(/kind/i), { target: { value: "liability" } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
@@ -973,7 +985,6 @@ describe("adding an account", () => {
     // that never unmounts only ever applies once.
     expect(screen.getByLabelText(/kind/i)).toHaveValue("asset");
     expect(screen.getByLabelText(/budgeting/i)).toHaveValue("on-budget");
-    expect(screen.getByLabelText(/asset class/i)).toHaveValue("Cash");
     expect(screen.getByLabelText(/balance as of/i)).toHaveValue(todayISO());
   });
 
@@ -1210,18 +1221,36 @@ describe("editing an account", () => {
     expect(stored("a3").name).toBe("Brokerage");
   });
 
+  test("an asset keeps the class it already had, and one turned into a debt drops it", () => {
+    renderHarness();
+
+    // Nothing on the form asks for the class any more, so saving a brokerage
+    // must not quietly refile it — and a debt turned into an asset takes the
+    // class its scope implies, since it never had one of its own.
+    fireEvent.click(screen.getByText("edit Brokerage"));
+    fireEvent.change(screen.getByLabelText(/budgeting/i), { target: { value: "on-budget" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(stored("a3")).toMatchObject({ scope: "on-budget", assetClass: "Stocks" });
+
+    fireEvent.click(screen.getByText("edit Mortgage"));
+    fireEvent.change(screen.getByLabelText(/kind/i), { target: { value: "asset" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(stored("a4")).toMatchObject({ type: "asset", assetClass: "Stocks" });
+
+    fireEvent.click(screen.getByText("edit Brokerage"));
+    fireEvent.change(screen.getByLabelText(/kind/i), { target: { value: "liability" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(stored("a3")).toMatchObject({ type: "liability", assetClass: "Other" });
+  });
+
   test("each opening re-seeds from what it was opened on", () => {
     renderHarness();
 
-    // A debt takes the asset-class select off screen, so the next opening
-    // remounts it — and what it comes back holding is a `defaultValue`, which is
-    // why the seeded class is mirrored in state rather than only written to the
-    // DOM. Without it the brokerage would read as cash.
     fireEvent.click(screen.getByText("edit Mortgage"));
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
     fireEvent.click(screen.getByText("edit Brokerage"));
-    expect(screen.getByLabelText(/asset class/i)).toHaveValue("Stocks");
+    expect(screen.getByLabelText(/budgeting/i)).toHaveValue("off-budget");
     expect(screen.getByLabelText(/starting balance/i)).toHaveValue("12000.00");
 
     // And adding after editing is a blank form again, on the defaults.
@@ -1230,7 +1259,6 @@ describe("editing an account", () => {
     expect(screen.getByLabelText(/^name$/i)).toHaveValue("");
     expect(screen.getByLabelText(/budgeting/i)).toHaveValue("on-budget");
     expect(screen.getByLabelText(/kind/i)).toHaveValue("asset");
-    expect(screen.getByLabelText(/asset class/i)).toHaveValue("Cash");
     expect(screen.getByLabelText(/starting balance/i)).toHaveValue("");
     expect(screen.getByLabelText(/balance as of/i)).toHaveValue(todayISO());
     expect(screen.getByRole("button", { name: "Add" })).toBeInTheDocument();

@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import useSyncedState from "./useSyncedState";
-import { SyncContext } from "../contexts/SyncContext";
+import { SyncContext, canonicalJSON } from "../contexts/SyncContext";
 import { setStorageScope } from "../storage";
 
 beforeEach(() => {
@@ -243,5 +243,22 @@ describe("with a sync layer", () => {
     expect(remoteListeners.has("budgets")).toBe(true);
     unmount();
     expect(remoteListeners.has("budgets")).toBe(false);
+  });
+});
+
+describe("canonicalJSON", () => {
+  // The server stores documents as jsonb, which hands keys back in its own
+  // order. Comparing by plain JSON.stringify read our own write, echoed back,
+  // as a change from another device — and re-pushed it, for ever.
+  test("one document serialises the same whatever order its keys arrive in", () => {
+    const sent = { name: "Rent", plannedCents: 150000, nested: { b: 1, a: [{ y: 2, x: 1 }] } };
+    const echoed = { nested: { a: [{ x: 1, y: 2 }], b: 1 }, plannedCents: 150000, name: "Rent" };
+
+    expect(JSON.stringify(sent)).not.toBe(JSON.stringify(echoed));
+    expect(canonicalJSON(sent)).toBe(canonicalJSON(echoed));
+  });
+
+  test("array order still matters, since it is display order", () => {
+    expect(canonicalJSON([1, 2])).not.toBe(canonicalJSON([2, 1]));
   });
 });

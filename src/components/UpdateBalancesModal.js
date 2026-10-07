@@ -4,6 +4,7 @@ import Button from "./Button";
 import {
   ACCOUNT_TYPES,
   isOffBudget,
+  scopeLabel,
   toEnteredBalanceCents,
   toStoredBalanceCents,
   useAccounts,
@@ -207,7 +208,7 @@ export default function UpdateBalancesModal({ show, period, tracked, handleClose
                       <td className="px-3 py-2">
                         <div className="font-sans text-row text-ink">{row.account.name}</div>
                         <div className="font-mono text-label uppercase text-ink-soft">
-                          {isOwed(row.account) ? "Amount owed" : row.account.assetClass}
+                          {isOwed(row.account) ? "Amount owed" : scopeLabel(row.account)}
                         </div>
                       </td>
                       {/* What the month is worth as things stand, and which of

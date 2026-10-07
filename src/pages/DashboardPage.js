@@ -62,10 +62,15 @@ export default function DashboardPage() {
   // reset the form under the user mid-type.
   const [moving, setMoving] = useState(null);
 
+  // What went out this month, less what came back into a category: a refund
+  // undoes that much of the spending it answers, the way each category's own
+  // activity figure already reads it.
+  const netSpentCents = dashboard.periodSpentCents - dashboard.periodRefundCents;
   // What there was to spend: money assigned in an earlier month and carried in
-  // is just as spendable as money assigned this month, and so is money refunded
-  // back into a category. Which is exactly what is left over plus what went out.
-  const fundedCents = dashboard.totals.availableCents + dashboard.periodSpentCents;
+  // is just as spendable as money assigned this month. Which is exactly what is
+  // left over plus what the month cost — net, since a refund already sits in
+  // what is left over.
+  const fundedCents = dashboard.totals.availableCents + netSpentCents;
   const categoryCount = dashboard.sections.reduce(
     (count, section) => count + section.rows.length,
     0
@@ -211,7 +216,7 @@ export default function DashboardPage() {
         availableToBudgetCents={dashboard.availableToBudgetCents}
         periodIncomeCents={dashboard.periodIncomeCents}
         budgetedCents={dashboard.periodBudgetedCents}
-        spentCents={dashboard.periodSpentCents}
+        spentCents={netSpentCents}
         refundCents={dashboard.periodRefundCents}
         fundedCents={fundedCents}
         categoryCount={categoryCount}

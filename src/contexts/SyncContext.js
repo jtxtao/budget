@@ -59,6 +59,27 @@ export function useSync() {
  */
 const FLUSH_DELAY_MS = 700;
 
+/**
+ * A document's identity as a string, independent of key order.
+ *
+ * `known` exists to recognise "the server already has this", and the server
+ * stores documents as `jsonb` — which does not keep keys in the order they were
+ * written (it sorts them, shortest first). A plain `JSON.stringify` therefore
+ * never matched a document on its way back down: every hydrate re-pushed every
+ * store, and every realtime echo of our own write read as a change from another
+ * device, was applied, re-pushed, and echoed again — a loop that kept the
+ * header's "Saving…" lit for as long as the app was open. Sorting the keys
+ * makes two serialisations of one document equal however either was ordered.
+ */
+export function canonicalJSON(value) {
+  return JSON.stringify(value, (_key, inner) => {
+    if (!inner || typeof inner !== "object" || Array.isArray(inner)) return inner;
+    const sorted = {};
+    for (const key of Object.keys(inner).sort()) sorted[key] = inner[key];
+    return sorted;
+  });
+}
+
 /** Backoff after a failed flush, so an offline device does not spin. */
 const RETRY_DELAY_MS = 5000;
 
@@ -193,7 +214,7 @@ export const SyncProvider = ({ children }) => {
       known.current.clear();
       for (const row of data ?? []) {
         snapshot[row.key] = row.value;
-        known.current.set(row.key, JSON.stringify(row.value));
+        known.current.set(row.key, canonicalJSON(row.value));
       }
       restoreScope(userId, snapshot);
 
@@ -288,10 +309,10 @@ export const SyncProvider = ({ children }) => {
     }
 
     for (const [key, value] of batch) {
-      const serialized = JSON.stringify(value);
+      const serialized = canonicalJSON(value);
       known.current.set(key, serialized);
       // Only clear the key if nothing newer arrived while this was in flight.
-      if (JSON.stringify(pending.current.get(key)) === serialized) pending.current.delete(key);
+      if (canonicalJSON(pending.current.get(key)) === serialized) pending.current.delete(key);
     }
     for (const key of drops) pendingDeletes.current.delete(key);
     persistOutbox();
@@ -321,7 +342,7 @@ export const SyncProvider = ({ children }) => {
       // Unchanged from what the server last told us. This is what makes a
       // reload cost zero writes despite every store's persist effect firing on
       // mount.
-      if (known.current.get(key) === JSON.stringify(value)) return;
+      if (known.current.get(key) === canonicalJSON(value)) return;
 
       pendingDeletes.current.delete(key);
       pending.current.set(key, value);
@@ -423,7 +444,7 @@ export const SyncProvider = ({ children }) => {
           if (pending.current.has(row.key)) return;
 
           const value = payload.eventType === "DELETE" ? undefined : row.value;
-          const serialized = JSON.stringify(value);
+          const serialized = canonicalJSON(value);
           // Our own write, echoed back.
           if (known.current.get(row.key) === serialized) return;
 

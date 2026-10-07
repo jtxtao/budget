@@ -20,7 +20,8 @@ import { currentPeriod } from "../utils";
  * monthlyEssentials = Σ plannedCents of every category counting as essentials
  * derivedTarget     = monthlyEssentials × monthsCovered
  * target            = derivedTarget, or the typed figure when that is in force
- * held              = Σ valueCents of the ticked accounts, at useNetWorth's figures
+ * counted(a)        = valueCents(a), or min(part set aside, valueCents(a))
+ * held              = Σ counted over the ticked accounts, at useNetWorth's figures
  * remaining         = max(0, target − held)
  * ```
  *
@@ -69,20 +70,31 @@ export default function useEmergencyFund() {
     const essentialsCount = essentials?.categoryCount ?? 0;
 
     const included = new Set(fund.accountIds);
-    const accountRows = rows.map((row) => ({
-      account: row.account,
-      valueCents: row.valueCents,
-      included: included.has(row.account.id),
-      // Where the figure came from, for the same reason the retirement picker
-      // carries it: a fund last valued in March is being counted at March's
-      // figure, and a household deciding whether it is covered should know.
-      hand: row.hand,
-      asOf: row.asOf,
-    }));
+    const amounts = fund.accountAmounts ?? {};
+    const accountRows = rows.map((row) => {
+      const portionCents = amounts[row.account.id] ?? null;
+      return {
+        account: row.account,
+        valueCents: row.valueCents,
+        included: included.has(row.account.id),
+        // The part of the account set aside as the fund, or null for all of it.
+        portionCents,
+        // Never more than the account actually holds: ten thousand earmarked in
+        // an account that has dipped to six is six thousand of buffer, and the
+        // earmark is kept so the figure comes back as the account refills.
+        countedCents:
+          portionCents == null ? row.valueCents : Math.min(portionCents, row.valueCents),
+        // Where the figure came from, for the same reason the retirement picker
+        // carries it: a fund last valued in March is being counted at March's
+        // figure, and a household deciding whether it is covered should know.
+        hand: row.hand,
+        asOf: row.asOf,
+      };
+    });
 
     const heldCents = accountRows
       .filter((row) => row.included)
-      .reduce((sum, row) => sum + row.valueCents, 0);
+      .reduce((sum, row) => sum + row.countedCents, 0);
 
     const derivedTargetCents = monthlyEssentialsCents * fund.monthsCovered;
     const typed = fund.targetSource === TARGET_SOURCES.AMOUNT;

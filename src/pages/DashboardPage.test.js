@@ -99,6 +99,36 @@ test("the headline figures are this month's, not all time", () => {
   expect(within(tile("Spent this month")).getByText("$1,200")).toBeInTheDocument();
 });
 
+test("money refunded into a category comes off what was spent this month", () => {
+  seed({
+    transactions: [
+      {
+        id: "t1",
+        kind: TRANSACTION_KINDS.OUTFLOW,
+        accountId: "acc1",
+        budgetId: "b1",
+        amountCents: 120000,
+        date: `${PERIOD}-03`,
+        description: "August rent",
+      },
+      {
+        id: "t2",
+        kind: TRANSACTION_KINDS.INFLOW,
+        accountId: "acc1",
+        budgetId: "b1",
+        amountCents: 20000,
+        date: `${PERIOD}-04`,
+        description: "Deposit returned",
+      },
+    ],
+  });
+  renderPage();
+
+  const tile = screen.getByText("Spent this month").closest("div");
+  expect(within(tile).getByText("$1,000")).toBeInTheDocument();
+  expect(within(tile).getByText("After $200 refunded")).toBeInTheDocument();
+});
+
 test("categories are grouped, with the figures on each row", () => {
   seed();
   renderPage();

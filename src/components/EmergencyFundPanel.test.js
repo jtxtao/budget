@@ -19,6 +19,7 @@ const FUND = {
     monthsCovered: 6,
     targetCents: null,
     accountIds: ["acc-save"],
+    accountAmounts: {},
   },
   monthlyEssentialsCents: 190000,
   essentialsCount: 2,
@@ -30,6 +31,8 @@ const FUND = {
       account: { id: "acc-save", name: "Savings", type: "asset", scope: "on-budget" },
       valueCents: 900000,
       included: true,
+      portionCents: null,
+      countedCents: 900000,
       hand: false,
       asOf: null,
     },
@@ -37,6 +40,8 @@ const FUND = {
       account: { id: "acc-cash", name: "Everyday", type: "asset", scope: "on-budget" },
       valueCents: 100000,
       included: false,
+      portionCents: null,
+      countedCents: 100000,
       hand: false,
       asOf: null,
     },
@@ -51,6 +56,7 @@ const FUND = {
 function renderPanel(overrides = {}, handlers = {}) {
   const onChange = handlers.onChange ?? jest.fn();
   const onToggleAccount = handlers.onToggleAccount ?? jest.fn();
+  const onAccountAmountChange = handlers.onAccountAmountChange ?? jest.fn(() => ({ ok: true }));
   const result = render(
     <MemoryRouter future={routerFuture}>
       <EmergencyFundPanel
@@ -58,10 +64,11 @@ function renderPanel(overrides = {}, handlers = {}) {
         error={overrides.error ?? null}
         onChange={onChange}
         onToggleAccount={onToggleAccount}
+        onAccountAmountChange={onAccountAmountChange}
       />
     </MemoryRouter>
   );
-  return { ...result, onChange, onToggleAccount };
+  return { ...result, onChange, onToggleAccount, onAccountAmountChange };
 }
 
 const typed = (overrides = {}) => ({
@@ -160,6 +167,28 @@ test("ticking an account is one call, and the total says what it adds up to", ()
 
   fireEvent.click(screen.getByLabelText("Everyday"));
   expect(onToggleAccount).toHaveBeenCalledWith({ accountId: "acc-cash", included: true });
+});
+
+test("part of a ticked account is sent as typed, and an unticked one cannot take a part", () => {
+  const { onAccountAmountChange } = renderPanel();
+
+  const savings = screen.getByRole("textbox", { name: "Amount of Savings counted" });
+  expect(savings).toHaveValue("");
+  expect(screen.getByRole("textbox", { name: "Amount of Everyday counted" })).toBeDisabled();
+
+  fireEvent.focus(savings);
+  fireEvent.change(savings, { target: { value: "$5,000" } });
+  fireEvent.blur(savings);
+  expect(onAccountAmountChange).toHaveBeenCalledWith({ accountId: "acc-save", amount: "$5,000" });
+});
+
+test("a stored part is shown formatted in its field", () => {
+  renderPanel({
+    accountRows: [{ ...FUND.accountRows[0], portionCents: 500000, countedCents: 500000 }],
+    heldCents: 500000,
+  });
+
+  expect(screen.getByRole("textbox", { name: "Amount of Savings counted" })).toHaveValue("$5,000");
 });
 
 test("a fund with no money pointed at it says so rather than measuring zero months", () => {

@@ -5,7 +5,6 @@ import Button from "./Button";
 import {
   ACCOUNT_SCOPES,
   ACCOUNT_TYPES,
-  ASSET_CLASSES,
   DEFAULT_SCOPE,
   UNCLASSIFIED,
   toEnteredBalanceCents,
@@ -39,9 +38,10 @@ import { amountEditing, todayISO } from "../utils";
  * A debt is asked for the amount **owed**, as a positive number, because that
  * is how a statement reads. The store signs it — see `signedOpeningCents`.
  *
- * The default asset class is Cash rather than the store's `UNCLASSIFIED`: the
- * store has to describe an account whose class nobody stated, while a form is
- * offering the pick most first accounts want.
+ * **The asset class is not asked.** Cash, stocks, bonds and the rest were a
+ * question most households could not usefully answer for an account that holds
+ * a bit of everything, and nothing they budget with reads it — only the net
+ * worth chart's bands do. So it is derived instead: see `assetClassFor`.
  *
  * A credit card is picked as a *scope*, not a kind, and picking it answers the
  * kind question outright: a card is money owed, so the form stops asking and
@@ -49,15 +49,30 @@ import { amountEditing, todayISO } from "../utils";
  * rather than read straight off the one — the store refuses the combination the
  * user would otherwise be able to build by choosing "card" and then "asset".
  */
-const DEFAULT_ASSET_CLASS = "Cash";
+
+/**
+ * What the store is handed for the class nobody was asked about.
+ *
+ * An asset already on the books keeps the class it has, so an account set up
+ * before the question was dropped — a brokerage filed as stocks, a house filed
+ * as real estate — is not quietly moved to another band of the net-worth chart
+ * by being edited. A new asset is read off its scope: money the budget spends
+ * through is cash, and a holding off budget is most often an investment. A debt
+ * is stored unclassified, as ever.
+ */
+function assetClassFor(account, type, scope) {
+  if (type !== ACCOUNT_TYPES.ASSET) return UNCLASSIFIED;
+  if (account?.type === ACCOUNT_TYPES.ASSET && account.assetClass) return account.assetClass;
+  return scope === ACCOUNT_SCOPES.OFF_BUDGET ? "Stocks" : "Cash";
+}
 
 /**
  * What the form opens holding: the account being amended, or the defaults for a
  * new one.
  *
  * One function, because two things seed these fields — the effect that runs on
- * open, and the `defaultValue` of the two selects that come and go with the
- * answers above them — and a form whose field says one thing while the value it
+ * open, and the `defaultValue` of the kind select that comes and goes with the
+ * answer above it — and a form whose field says one thing while the value it
  * would submit says another is the whole class of bug the re-seed effect exists
  * to prevent.
  *
@@ -69,11 +84,6 @@ function seedFor(account, baseType, baseScope) {
     name: account?.name ?? "",
     type: baseType,
     scope: baseScope,
-    // A debt is stored unclassified, so one being changed into an asset is
-    // offered the form's usual first pick rather than "Other" — while an asset
-    // keeps whatever class it was given, "Other" included, since there it is an
-    // answer the user chose.
-    assetClass: account?.type === ACCOUNT_TYPES.ASSET ? account.assetClass : DEFAULT_ASSET_CLASS,
     // Shown the way it was entered rather than the way it is stored: a debt as
     // the amount owed, positive — and through `amountEditing`, the raw-under-
     // the-caret face every money field in the app wears, so $12,340.50 seeds as
@@ -99,19 +109,14 @@ export default function AddAccountModal({
   const nameRef = useRef();
   const typeRef = useRef();
   const scopeRef = useRef();
-  const assetClassRef = useRef();
   const openingRef = useRef();
   const openingDateRef = useRef();
   const [error, setError] = useState(null);
   // Mirror the two selects, and only so the fields below them can be shown or
   // hidden and the balance relabelled — the submitted values are still read from
-  // the DOM, so there is no second copy of what the user chose. The asset class
-  // is mirrored for a narrower reason: its select unmounts whenever a debt is
-  // chosen, and what it comes back holding is a `defaultValue`, which is the
-  // only way a seeded class survives being toggled away from and back.
+  // the DOM, so there is no second copy of what the user chose.
   const [type, setType] = useState(defaultType);
   const [scope, setScope] = useState(defaultScope);
-  const [assetClass, setAssetClass] = useState(DEFAULT_ASSET_CLASS);
 
   const { addAccount, updateAccount } = useAccounts();
 
@@ -143,14 +148,12 @@ export default function AddAccountModal({
     openingDateRef.current.value = seed.openingDate;
     setType(seed.type);
     setScope(seed.scope);
-    setAssetClass(seed.assetClass);
-    // Both are absent for a card, and remounted holding the mirrors above if
-    // the user switches back to an account that has them.
+    // Absent for a card, and remounted holding the mirror above if the user
+    // switches back to an account that has it.
     if (typeRef.current) typeRef.current.value = seed.type;
-    if (assetClassRef.current) assetClassRef.current.value = seed.assetClass;
   }, [show, account, baseType, baseScope]);
 
-  // One handler on the form, so all three mirrors are set from whatever is on
+  // One handler on the form, so both mirrors are set from whatever is on
   // screen *after* the change. The kind select unmounts while a card is chosen
   // and remounts holding its `defaultValue`, so the mirror has to go back with
   // it — otherwise picking "liability", switching to card, and switching back
@@ -164,7 +167,6 @@ export default function AddAccountModal({
     setType(
       nextScope === ACCOUNT_SCOPES.CREDIT_CARD ? baseType : typeRef.current?.value ?? baseType
     );
-    if (assetClassRef.current) setAssetClass(assetClassRef.current.value);
   }
 
   function handleSubmit(e) {
@@ -174,13 +176,12 @@ export default function AddAccountModal({
     // store reads null as "from the beginning of the books".
     const openingDate = openingDateRef.current.value || null;
 
+    const submittedScope = scopeRef.current.value;
     const fields = {
       name: nameRef.current.value,
       type: effectiveType,
-      scope: scopeRef.current.value,
-      // A liability has no asset class to state, so it is stored unclassified
-      // rather than carrying whichever class happened to be on screen.
-      assetClass: assetClassRef.current ? assetClassRef.current.value : UNCLASSIFIED,
+      scope: submittedScope,
+      assetClass: assetClassFor(account, effectiveType, submittedScope),
       opening: openingRef.current.value,
       openingDate,
     };
@@ -215,15 +216,6 @@ export default function AddAccountModal({
           <SelectField label="Kind" selectRef={typeRef} defaultValue={type}>
             <option value={ACCOUNT_TYPES.ASSET}>Asset — something you own</option>
             <option value={ACCOUNT_TYPES.LIABILITY}>Liability — something you owe</option>
-          </SelectField>
-        )}
-        {effectiveType === ACCOUNT_TYPES.ASSET && (
-          <SelectField label="Asset class" selectRef={assetClassRef} defaultValue={assetClass}>
-            {ASSET_CLASSES.map((assetClass) => (
-              <option key={assetClass} value={assetClass}>
-                {assetClass}
-              </option>
-            ))}
           </SelectField>
         )}
         {/* Not required: an account that starts empty is a real answer, and a

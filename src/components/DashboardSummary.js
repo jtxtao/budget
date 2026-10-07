@@ -86,18 +86,18 @@ export default function DashboardSummary({
               : `Across ${categoryCount} ${categoryCount === 1 ? "category" : "categories"}`
           }
         />
-        {/* Gross, and the refunds get their own line rather than being netted
-            into the headline: "spent $1,200" is a fact about the month that a
-            reader can check against their statements, and quietly showing $1,140
-            because a friend paid back their share is not. The categories net it
-            off on their rows, where the arithmetic is on screen to see. */}
+        {/* Net of refunds: money paid back into a category undoes that much of
+            what it spent, which is how the category's own row already reads it
+            — spend $100 on dinner, be paid back $60, and the month cost $40.
+            The refund is still named underneath, so the gross figure a
+            statement shows is one addition away. */}
         <Tile
           label="Spent this month"
           figure={formatCents(spentCents)}
           tone="text-vermilion"
           note={
             refundCents > 0
-              ? `${formatCents(refundCents)} refunded back`
+              ? `After ${formatCents(refundCents)} refunded`
               : `${formatCents(periodIncomeCents)} came in`
           }
         />
