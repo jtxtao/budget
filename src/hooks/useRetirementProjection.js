@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { PLAN_BUCKETS, useBudgets } from "../contexts/BudgetsContext";
 import { useIncomePlan } from "../contexts/IncomePlanContext";
+import { useLifeEvents } from "../contexts/LifeEventsContext";
 import {
   SPENDING_SOURCES,
   STARTING_SOURCES,
@@ -257,6 +258,7 @@ export default function useRetirementProjection() {
   const { plan } = useRetirement();
   const { budgets } = useBudgets();
   const { expectedMonthlyCents } = useIncomePlan();
+  const { events } = useLifeEvents();
 
   // One month, not the chart's twelve: all this needs is what each account is
   // worth today, and `useNetWorth` is the only definition of that.
@@ -418,6 +420,7 @@ export default function useRetirementProjection() {
         inflationRateBps: plan.inflationRateBps,
         cashRateBps: plan.cashRateBps,
         propertyRateBps: plan.propertyRateBps,
+        events,
       }),
       projection: projectRetirement({
         currentAge: plan.currentAge,
@@ -431,5 +434,5 @@ export default function useRetirementProjection() {
         inflationRateBps: plan.inflationRateBps,
       }),
     };
-  }, [plan, rows, budgets, expectedMonthlyCents]);
+  }, [plan, rows, budgets, expectedMonthlyCents, events]);
 }

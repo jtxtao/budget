@@ -1,5 +1,7 @@
 import { useState } from "react";
+import AddLifeEventModal from "../components/AddLifeEventModal";
 import Button from "../components/Button";
+import LifeEventsPanel from "../components/LifeEventsPanel";
 import PageHeader from "../components/PageHeader";
 import NetWorthProjection from "../components/NetWorthProjection";
 import Placeholder from "../components/Placeholder";
@@ -8,7 +10,9 @@ import RetirementAssumptionsPanel from "../components/RetirementAssumptionsPanel
 import RetirementChart from "../components/RetirementChart";
 import RetirementOutlook from "../components/RetirementOutlook";
 import RetirementStartingPoint from "../components/RetirementStartingPoint";
+import { useLifeEvents } from "../contexts/LifeEventsContext";
 import { useRetirement } from "../contexts/RetirementContext";
+import { useSavingsGoals } from "../contexts/SavingsGoalsContext";
 import useRetirementProjection from "../hooks/useRetirementProjection";
 import { formatBps, formatCents } from "../utils";
 
@@ -52,6 +56,12 @@ export default function RetirementPage() {
   const [startingError, setStartingError] = useState(null);
   const [assumptionsError, setAssumptionsError] = useState(null);
   const [projectionError, setProjectionError] = useState(null);
+
+  const { events, setLifeEventEnabled, deleteLifeEvent } = useLifeEvents();
+  const { goals } = useSavingsGoals();
+  // One modal for adding and editing, the savings-goals page's arrangement:
+  // `editing` is the record, `seed` what a new one starts from.
+  const [eventModal, setEventModal] = useState({ show: false, editing: null, seed: null });
 
   // Every mutator reports `{ ok, error }`; this puts the error in the panel
   // that sent it and hands the result back, so a form can keep what was typed.
@@ -179,6 +189,16 @@ export default function RetirementPage() {
           />
         )}
 
+        <LifeEventsPanel
+          plan={plan}
+          events={events}
+          goals={goals}
+          onAdd={(seed) => setEventModal({ show: true, editing: null, seed })}
+          onEdit={(event) => setEventModal({ show: true, editing: event, seed: null })}
+          onToggle={setLifeEventEnabled}
+          onRemove={deleteLifeEvent}
+        />
+
         <ProjectionAssumptionsPanel
           plan={plan}
           inputs={inputs}
@@ -190,6 +210,13 @@ export default function RetirementPage() {
           onUpdateSalary={report(setProjectionError, updateSalary)}
           onRemoveSalary={report(setProjectionError, removeSalary)}
           onDebtChange={report(setProjectionError, setDebtAssumption)}
+        />
+
+        <AddLifeEventModal
+          show={eventModal.show}
+          event={eventModal.editing}
+          seed={eventModal.seed}
+          handleClose={() => setEventModal((current) => ({ ...current, show: false }))}
         />
 
         <Placeholder

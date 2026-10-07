@@ -1,4 +1,10 @@
-import { INCOME_SOURCES, projectNetWorth, takeHomeAt } from "./netWorthProjection";
+import {
+  INCOME_SOURCES,
+  LIFE_EVENT_KINDS,
+  eventsAt,
+  projectNetWorth,
+  takeHomeAt,
+} from "./netWorthProjection";
 import { projectRetirement, requiredNestEgg } from "./hooks/useRetirementProjection";
 
 /**
@@ -329,5 +335,107 @@ describe("a year that cannot be paid for", () => {
     expect(projection.ready).toBe(false);
     expect(projection.issues).toContain("Enter your age today.");
     expect(projection.series).toEqual([]);
+  });
+});
+
+describe("life events", () => {
+  const event = (fields) => ({
+    id: fields.name,
+    enabled: true,
+    years: null,
+    oneTimeCents: null,
+    annualCents: null,
+    keptShareBps: 0,
+    ...fields,
+  });
+  const wedding = event({ name: "Wedding", kind: LIFE_EVENT_KINDS.EXPENSE, startAge: 42, years: 1, oneTimeCents: 30_000_00 });
+  const childcare = event({ name: "Childcare", kind: LIFE_EVENT_KINDS.EXPENSE, startAge: 43, years: 5, annualCents: 18_000_00 });
+  const sabbatical = event({ name: "Sabbatical", kind: LIFE_EVENT_KINDS.INCOME_CHANGE, startAge: 50, years: 1, keptShareBps: 0 });
+  const pension = event({ name: "Social Security", kind: LIFE_EVENT_KINDS.INCOME, startAge: 67, annualCents: 24_000_00 });
+
+  const plan = {
+    currentAge: 40,
+    retirementAge: 65,
+    lifeExpectancy: 90,
+    pots: { cashCents: 20_000_00, investedCents: 50_000_00, retirementCents: 200_000_00 },
+    income: { source: INCOME_SOURCES.GROWTH, takeHomeAnnualCents: 100_000_00 },
+    spendingCents: 60_000_00,
+    savingsCents: 10_000_00,
+    pretaxRetirementCents: 15_000_00,
+    retirementSpendingCents: 70_000_00,
+    retirementTaxRateBps: 1500,
+    growthRateBps: 900,
+    drawdownRateBps: 500,
+    inflationRateBps: 250,
+    cashRateBps: 250,
+  };
+
+  test("an event runs for its years, its one-time figure lands in the first", () => {
+    expect(eventsAt(42, [wedding]).expense).toBe(30_000_00);
+    expect(eventsAt(43, [wedding]).expense).toBe(0);
+    expect(eventsAt(42, [childcare]).expense).toBe(0);
+    expect(eventsAt(43, [childcare]).expense).toBe(18_000_00);
+    expect(eventsAt(47, [childcare]).expense).toBe(18_000_00);
+    expect(eventsAt(48, [childcare]).expense).toBe(0);
+    // No number of years: for the rest of the plan.
+    expect(eventsAt(89, [pension]).income).toBe(24_000_00);
+  });
+
+  test("a disabled event is kept and does nothing", () => {
+    expect(eventsAt(42, [{ ...wedding, enabled: false }])).toEqual({
+      expense: 0,
+      income: 0,
+      keptShare: 1,
+      names: [],
+    });
+  });
+
+  test("two income changes in one year multiply", () => {
+    const halfTime = event({ name: "Half time", kind: LIFE_EVENT_KINDS.INCOME_CHANGE, startAge: 50, years: 1, keptShareBps: 5000 });
+    expect(eventsAt(50, [halfTime, { ...halfTime, id: "again" }]).keptShare).toBeCloseTo(0.25, 10);
+  });
+
+  test("a wedding comes out of cash the year it happens", () => {
+    const without = projectNetWorth(plan);
+    const withIt = projectNetWorth({ ...plan, events: [wedding] });
+    const cashAt = (projection, age) => projection.series.find((point) => point.age === age).cashCents;
+
+    expect(cashAt(withIt, 42)).toBe(cashAt(without, 42));
+    expect(cashAt(without, 43) - cashAt(withIt, 43)).toBe(30_000_00);
+    expect(withIt.series.find((point) => point.age === 42).events).toEqual(["Wedding"]);
+    expectIdentity(withIt);
+  });
+
+  test("a sabbatical stops pay and the saving that came out of it, not the spending", () => {
+    const projection = projectNetWorth({ ...plan, events: [sabbatical] });
+    const year = projection.series.find((point) => point.age === 50);
+    expect(year.incomeCents).toBe(0);
+    expect(year.consumptionCents).toBe(60_000_00);
+    const at = (age) => projection.series.find((point) => point.age === age);
+    // Nothing was added to the retirement pot that year beyond its growth.
+    const grown = at(50).retirementCents * ((1.09 / 1.025));
+    expect(at(51).retirementCents).toBeCloseTo(grown, -1);
+    expectIdentity(projection);
+  });
+
+  test("income in retirement is spent before savings are", () => {
+    const without = projectNetWorth(plan);
+    const withIt = projectNetWorth({ ...plan, events: [pension] });
+    const at = (projection, age) => projection.series.find((point) => point.age === age);
+    expect(at(withIt, 70).netCents).toBeGreaterThan(at(without, 70).netCents);
+    expect(at(withIt, 67).incomeCents).toBe(24_000_00);
+    expectIdentity(withIt);
+  });
+
+  test("income larger than the year's spending is left in cash", () => {
+    const windfall = event({ name: "Inheritance", kind: LIFE_EVENT_KINDS.INCOME, startAge: 70, years: 1, oneTimeCents: 500_000_00 });
+    const projection = projectNetWorth({ ...plan, events: [windfall] });
+    const at = (age) => projection.series.find((point) => point.age === age);
+    expect(at(71).cashCents).toBeGreaterThan(at(70).cashCents);
+    expectIdentity(projection);
+  });
+
+  test("every kind together still balances, year by year", () => {
+    expectIdentity(projectNetWorth({ ...plan, events: [wedding, childcare, sabbatical, pension] }));
   });
 });

@@ -453,3 +453,111 @@ describe("net worth by age", () => {
     expect(within(projectionRegion()).getByText("Mortgage is paid off at 49.")).toBeInTheDocument();
   });
 });
+
+describe("life events", () => {
+  const events = () => screen.getByRole("region", { name: "Life events" });
+  const dialog = () => screen.getByRole("dialog");
+  const atAge = (label) =>
+    within(screen.getByRole("region", { name: "Net worth by age" })).getByText(label)
+      .nextElementSibling.textContent;
+  const money = (text) => Number(text.replace(/[^0-9.-]/g, ""));
+
+  function stateRetiredPlan() {
+    // Retiring at 40 with nothing coming in, so every dollar an event moves is
+    // visible in what is left at the end.
+    seed();
+    renderPage();
+    statePlan({ age: 40, retireAt: 41 });
+  }
+
+  test("a template seeds the form, and nothing lands until it is saved", () => {
+    seed();
+    renderPage();
+    statePlan();
+    const before = money(atAge("At 65"));
+
+    fireEvent.click(within(events()).getByRole("button", { name: "Wedding" }));
+    expect(within(dialog()).getByLabelText("Name")).toHaveValue("Wedding");
+    expect(within(dialog()).getByLabelText("Once, in the first year")).toHaveValue("30000.00");
+    expect(within(events()).getByText(/Nothing planned yet/)).toBeInTheDocument();
+
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Add event" }));
+    expect(within(events()).getByRole("checkbox", { name: "Include Wedding" })).toBeChecked();
+    expect(within(events()).getByText("Out: $30,000 once")).toBeInTheDocument();
+    expect(money(atAge("At 65"))).toBeLessThan(before);
+  });
+
+  test("unticking an event leaves it in the list and out of the projection", () => {
+    seed();
+    renderPage();
+    statePlan();
+    const before = atAge("At 65");
+    fireEvent.click(within(events()).getByRole("button", { name: "Wedding" }));
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Add event" }));
+
+    fireEvent.click(within(events()).getByRole("checkbox", { name: "Include Wedding" }));
+    expect(within(events()).getByRole("checkbox", { name: "Include Wedding" })).not.toBeChecked();
+    expect(atAge("At 65")).toBe(before);
+  });
+
+  test("an event is edited in place, and a refused edit keeps the form open", () => {
+    stateRetiredPlan();
+    fireEvent.click(within(events()).getByRole("button", { name: "Childcare" }));
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Add event" }));
+    expect(within(events()).getByText("Out: $18,000 a year")).toBeInTheDocument();
+
+    fireEvent.click(within(events()).getByRole("button", { name: "Edit Childcare" }));
+    fireEvent.change(within(dialog()).getByLabelText("Every year it runs"), {
+      target: { value: "twelve thousand" },
+    });
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Save" }));
+    expect(within(dialog()).getByRole("alert")).toHaveTextContent(
+      "Enter the yearly amount as an amount of zero or more."
+    );
+
+    fireEvent.change(within(dialog()).getByLabelText("Every year it runs"), {
+      target: { value: "$12,000" },
+    });
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Save" }));
+    expect(within(events()).getByText("Out: $12,000 a year")).toBeInTheDocument();
+  });
+
+  test("income in retirement makes the money last longer", () => {
+    stateRetiredPlan();
+    // The plan runs short: $305,000 against $67,200 a year.
+    const before = money(atAge("First year short"));
+    fireEvent.click(within(events()).getByRole("button", { name: "Pension" }));
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Add event" }));
+    expect(money(atAge("First year short"))).toBeGreaterThan(before);
+  });
+
+  test("a savings goal seeds an event with its target", () => {
+    seed({
+      savingsGoals: [{ id: "g1", name: "Honeymoon", targetCents: 800000, targetDate: null }],
+    });
+    renderPage();
+    statePlan();
+
+    fireEvent.click(within(events()).getByRole("button", { name: "From the savings goal Honeymoon" }));
+    expect(within(dialog()).getByLabelText("Name")).toHaveValue("Honeymoon");
+    expect(within(dialog()).getByLabelText("Once, in the first year")).toHaveValue("8000.00");
+    expect(within(dialog()).getByLabelText("Starts at age")).toHaveValue(41);
+  });
+
+  test("a stored event that cannot be read is dropped, and a readable one keeps its fields", () => {
+    seed({
+      lifeEvents: [
+        { id: "e1", name: "Sabbatical", kind: "income-change", startAge: 50, years: 1, keptShareBps: 0, enabled: false },
+        { id: "e2", name: "Mystery", kind: "lottery", startAge: 45 },
+        { id: "e3", name: "No age", kind: "expense", oneTimeCents: 100 },
+      ],
+    });
+    renderPage();
+    statePlan();
+
+    expect(within(events()).getByRole("checkbox", { name: "Include Sabbatical" })).not.toBeChecked();
+    expect(within(events()).getByText("No pay")).toBeInTheDocument();
+    expect(within(events()).queryByText("Mystery")).not.toBeInTheDocument();
+    expect(within(events()).queryByText("No age")).not.toBeInTheDocument();
+  });
+});

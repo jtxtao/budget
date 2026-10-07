@@ -76,6 +76,58 @@ export const INCOME_SOURCES = {
   SALARIES: "salaries",
 };
 
+/**
+ * What a life event does to the year it falls in. The direction is the kind,
+ * never a sign — the ledger's rule — and every figure is a magnitude in today's
+ * dollars. See `LifeEventsContext` for the record.
+ */
+export const LIFE_EVENT_KINDS = {
+  /** Money out: a one-time figure at the start age, a yearly one, or both. */
+  EXPENSE: "expense",
+  /** Money in, the same shape: Social Security, a pension, an inheritance. */
+  INCOME: "income",
+  /** A share of normal pay kept while it runs: 0 for a sabbatical. */
+  INCOME_CHANGE: "income-change",
+};
+
+/**
+ * Everything the enabled events do to one year.
+ *
+ * An event runs from `startAge` for `years` years (`null` is for the rest of
+ * the plan); its one-time figure lands in the first of them. Two income
+ * changes in one year multiply — half pay during a year that is itself half
+ * time is a quarter — and only reach working years, since there is no pay
+ * left to change once retired.
+ */
+export function eventsAt(age, events = []) {
+  let expense = 0;
+  let income = 0;
+  let keptShare = 1;
+  const names = [];
+
+  for (const event of events) {
+    if (!event.enabled) continue;
+    const active =
+      age >= event.startAge && (event.years == null || age < event.startAge + event.years);
+    if (!active) continue;
+
+    const first = age === event.startAge;
+    const amount = (first ? event.oneTimeCents ?? 0 : 0) + (event.annualCents ?? 0);
+    if (event.kind === LIFE_EVENT_KINDS.EXPENSE) {
+      expense += amount;
+      if (amount > 0) names.push(event.name);
+    } else if (event.kind === LIFE_EVENT_KINDS.INCOME) {
+      income += amount;
+      if (amount > 0) names.push(event.name);
+    } else if (event.kind === LIFE_EVENT_KINDS.INCOME_CHANGE) {
+      keptShare *= fromBps(event.keptShareBps ?? 0);
+      names.push(event.name);
+    }
+  }
+
+  return { expense, income, keptShare, names };
+}
+
 /** The real rate left after inflation has taken its share. */
 export function realRate(nominalBps, inflationBps) {
   return (1 + fromBps(nominalBps)) / (1 + fromBps(inflationBps)) - 1;
@@ -182,6 +234,7 @@ export function projectNetWorth({
   inflationRateBps = 0,
   cashRateBps = 0,
   propertyRateBps = 0,
+  events = [],
 }) {
   const issues = issuesFor({ currentAge, retirementAge, lifeExpectancy });
   const rates = {
@@ -274,6 +327,9 @@ export function projectNetWorth({
       if (debt.owed === 0) payoffs.push({ id: debt.id, name: debt.name, age });
     }
 
+    const happening = eventsAt(age, events);
+    point.events = happening.names;
+
     let incomeFlow = 0;
     let consumption = 0;
     let tax = 0;
@@ -281,17 +337,26 @@ export function projectNetWorth({
     let unfunded = 0;
 
     if (working) {
-      const takeHome = takeHomeAt(age, {
-        currentAge,
-        income,
-        pretaxCents: pretaxRetirementCents,
-        inflationRateBps,
-      });
-      incomeFlow = takeHome + pretaxRetirementCents;
+      // An income change scales the whole of what work brings in — the pay,
+      // the payroll deduction, and the saving the budget does out of the pay —
+      // because a year at half pay is a year that saves half. Spending does
+      // not scale: the rent is the same on a sabbatical.
+      const share = happening.keptShare;
+      const takeHome =
+        takeHomeAt(age, {
+          currentAge,
+          income,
+          pretaxCents: pretaxRetirementCents,
+          inflationRateBps,
+        }) * share;
+      const pretax = pretaxRetirementCents * share;
+      const saved = savingsCents * share;
+      const afterTax = afterTaxRetirementCents * share;
+      incomeFlow = takeHome + pretax + happening.income;
       // The budget's spending includes today's debt payments, so what was
       // actually consumed is the rest of it; whatever the debts no longer
       // take comes back to cash.
-      consumption = spendingCents - statedPayments;
+      consumption = spendingCents - statedPayments + happening.expense;
       const freed = statedPayments - paid;
 
       growth =
@@ -300,12 +365,18 @@ export function projectNetWorth({
         pots.retirement * rates.growth +
         pots.property * rates.property;
       pots.cash *= 1 + rates.cash;
-      pots.invested = pots.invested * (1 + rates.growth) + savingsCents;
-      pots.retirement =
-        pots.retirement * (1 + rates.growth) + afterTaxRetirementCents + pretaxRetirementCents;
+      pots.invested = pots.invested * (1 + rates.growth) + saved;
+      pots.retirement = pots.retirement * (1 + rates.growth) + afterTax + pretax;
       pots.property *= 1 + rates.property;
 
-      pots.cash += takeHome - spendingCents - savingsCents - afterTaxRetirementCents + freed;
+      pots.cash +=
+        takeHome +
+        happening.income -
+        spendingCents -
+        happening.expense -
+        saved -
+        afterTax +
+        freed;
 
       if (pots.cash < 0) {
         const owing = -pots.cash;
@@ -319,11 +390,20 @@ export function projectNetWorth({
     } else {
       // Retired: the year's spending and whatever the debts still take come
       // out at the start, then what is left grows.
-      consumption = retirementSpendingCents;
-      const result = draw(pots, retirementSpendingCents + paid, retirementTax);
-      tax = result.tax;
-      if (result.short > SHORTFALL_TOLERANCE && shortfallAge == null) shortfallAge = age;
-      unfunded = result.short;
+      // An event's income is set against the year's withdrawal — a pension
+      // is spent before savings are — and a year it more than covers leaves
+      // the rest in cash.
+      incomeFlow = happening.income;
+      consumption = retirementSpendingCents + happening.expense;
+      const needed = retirementSpendingCents + happening.expense + paid - happening.income;
+      if (needed < 0) {
+        pots.cash -= needed;
+      } else {
+        const result = draw(pots, needed, retirementTax);
+        tax = result.tax;
+        if (result.short > SHORTFALL_TOLERANCE && shortfallAge == null) shortfallAge = age;
+        unfunded = result.short;
+      }
 
       growth =
         pots.cash * rates.cash +

@@ -105,6 +105,11 @@ export default function NetWorthProjection({ projection, retirementAge, lifeExpe
                     {point.age === retirementAge && (
                       <span className="ml-2 font-mono text-label uppercase text-ink-soft">Retire</span>
                     )}
+                    {point.events?.length > 0 && (
+                      <span className="block font-sans text-label text-ink-soft">
+                        {point.events.join(", ")}
+                      </span>
+                    )}
                   </th>
                   {COLUMNS.map((column) => (
                     <td

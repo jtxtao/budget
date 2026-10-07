@@ -11,6 +11,7 @@ import { SavingsGoalsProvider } from "./SavingsGoalsContext";
 import { SavingsGoalAssignmentsProvider } from "./SavingsGoalAssignmentsContext";
 import { SchedulesProvider } from "./SchedulesContext";
 import { EmergencyFundProvider } from "./EmergencyFundContext";
+import { LifeEventsProvider } from "./LifeEventsContext";
 
 // Composes every store in one place so index.js and the tests wrap the app the
 // same way, and adding a store does not mean editing both.
@@ -77,6 +78,11 @@ import { EmergencyFundProvider } from "./EmergencyFundContext";
 // essentials to what those accounts are worth, which is the cross-store read no
 // provider may make.
 //
+// LifeEvents is independent in both directions too: an event is a guess about
+// the household's future that only src/netWorthProjection.js reads, it names no
+// other store's record — one copied from a savings goal is copied once, not
+// linked — and nothing deletes into it, so its position here is free.
+//
 // SavingsGoals is independent of every other store: a goal names no category,
 // no account, and no transaction, so nothing outside this pair deletes into or
 // out of it. SavingsGoalAssignments is the money-actually-put-in half of a
@@ -99,7 +105,9 @@ export default function AppProviders({ children }) {
                       <SavingsGoalAssignmentsProvider>
                         <SavingsGoalsProvider>
                           <SchedulesProvider>
-                            <EmergencyFundProvider>{children}</EmergencyFundProvider>
+                            <EmergencyFundProvider>
+                              <LifeEventsProvider>{children}</LifeEventsProvider>
+                            </EmergencyFundProvider>
                           </SchedulesProvider>
                         </SavingsGoalsProvider>
                       </SavingsGoalAssignmentsProvider>
