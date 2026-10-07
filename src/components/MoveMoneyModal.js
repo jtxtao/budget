@@ -3,6 +3,7 @@ import Dialog from "./Dialog";
 import Button from "./Button";
 import useEnvelopes from "../hooks/useEnvelopes";
 import { useAssignments } from "../contexts/AssignmentsContext";
+import { TO_BE_ASSIGNED } from "../contexts/constants";
 import { amountAtRest, amountField, formatCents, formatPeriod, toCents } from "../utils";
 
 /**
@@ -30,6 +31,14 @@ import { amountAtRest, amountField, formatCents, formatPeriod, toCents } from ".
  * before a paycheque, and the app has exactly one way of saying so — the figure
  * goes red, here before the write and on the row after it. See
  * `moveBetweenBudgets`, which could not check it in any case.
+ *
+ * **"To be assigned" is offered on both sides**, first in each list. Funding a
+ * short category is usually a matter of giving it unassigned money rather than
+ * taking it from a neighbour, and sending what a category no longer needs back
+ * to the pool is the same act reversed — so one door covers all three, and the
+ * dashboard can open it on a short category with the pool already picked and
+ * the shortfall already typed. The pool is not a row, so its before-and-after
+ * is the pool figure itself, held to the same red rule as everything else.
  */
 export default function MoveMoneyModal({ show, period, seed, handleClose }) {
   const formRef = useRef();
@@ -39,7 +48,7 @@ export default function MoveMoneyModal({ show, period, seed, handleClose }) {
   const [preview, setPreview] = useState({ fromId: "", toId: "", cents: 0 });
 
   const { moveBetweenBudgets } = useAssignments();
-  const { rows } = useEnvelopes(period);
+  const { rows, toBeAssignedCents } = useEnvelopes(period);
 
   // The same rule `AssignIncomeModal` uses for which rows are editable:
   // configured categories, plus the catch-alls whenever they hold a balance or
@@ -53,7 +62,11 @@ export default function MoveMoneyModal({ show, period, seed, handleClose }) {
       row.activityCents !== 0
   );
 
-  const rowFor = (budgetId) => movable.find((row) => row.budgetId === budgetId) ?? null;
+  // The pool, shaped like a row so the read-out can treat both sides alike.
+  const pool = { budgetId: TO_BE_ASSIGNED, name: "To be assigned", availableCents: toBeAssignedCents };
+  const choices = [pool, ...movable];
+
+  const rowFor = (budgetId) => choices.find((row) => row.budgetId === budgetId) ?? null;
 
   const recompute = useCallback(() => {
     const form = formRef.current;
@@ -106,16 +119,20 @@ export default function MoveMoneyModal({ show, period, seed, handleClose }) {
   const showPreview =
     fromRow != null && toRow != null && fromRow !== toRow && preview.cents > 0;
 
+  const fromPool = preview.fromId === TO_BE_ASSIGNED;
+  const toPool = preview.toId === TO_BE_ASSIGNED;
+  const submitLabel = fromPool ? "Assign it" : toPool ? "Return it" : "Move it";
+
   const selectClass =
     "w-full border border-edge bg-panel-raised px-3 py-2 font-sans text-row text-chalk outline-none transition-colors focus:border-azure";
   const labelClass = "mb-1.5 block font-mono text-label uppercase text-chalk-soft";
 
   return (
     <Dialog show={show} handleClose={handleClose} title={`Move money · ${formatPeriod(period)}`}>
-      {movable.length < 2 ? (
+      {movable.length < 1 ? (
         <p className="font-sans text-row text-chalk-soft">
-          Moving money needs two categories to move it between. Add another on the budget plan and
-          this will have somewhere to go.
+          Moving money needs a category to move it into. Add one on the budget plan and this will
+          have somewhere to go.
         </p>
       ) : (
         <form ref={formRef} onSubmit={handleSubmit} onChange={recompute}>
@@ -126,7 +143,7 @@ export default function MoveMoneyModal({ show, period, seed, handleClose }) {
               </label>
               <select id="move-from" name="fromBudgetId" className={selectClass}>
                 <option value="">Choose a category</option>
-                {movable.map((row) => (
+                {choices.map((row) => (
                   <option key={row.budgetId} value={row.budgetId}>
                     {row.name} — {formatCents(row.availableCents)}
                   </option>
@@ -139,7 +156,7 @@ export default function MoveMoneyModal({ show, period, seed, handleClose }) {
               </label>
               <select id="move-to" name="toBudgetId" className={selectClass}>
                 <option value="">Choose a category</option>
-                {movable.map((row) => (
+                {choices.map((row) => (
                   <option key={row.budgetId} value={row.budgetId}>
                     {row.name} — {formatCents(row.availableCents)}
                   </option>
@@ -190,8 +207,8 @@ export default function MoveMoneyModal({ show, period, seed, handleClose }) {
               </>
             ) : (
               <p className="font-sans text-row text-chalk-soft">
-                Pick two categories and an amount, and what each will be left with appears here.
-                Nothing leaves the pool — the money is already assigned.
+                Pick where the money comes from, where it goes and how much, and what each will be
+                left with appears here. “To be assigned” is your unassigned money.
               </p>
             )}
           </div>
@@ -209,7 +226,7 @@ export default function MoveMoneyModal({ show, period, seed, handleClose }) {
             {/* Not "Move money", which is what the button that *opens* this
                 says — `EnterScheduledModal`'s "Record it" for the same reason. */}
             <Button variant="primary" type="submit">
-              Move it
+              {submitLabel}
             </Button>
           </div>
         </form>

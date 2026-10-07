@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import AddTransactionModal from "../components/AddTransactionModal";
 import AssignIncomeModal from "../components/AssignIncomeModal";
-import Button from "../components/Button";
 import PageHeader from "../components/PageHeader";
 import PeriodStepper from "../components/PeriodStepper";
 import ToBeAssignedBar from "../components/ToBeAssignedBar";
@@ -102,14 +101,10 @@ export default function TransactionsPage() {
         eyebrow="Day to day"
         title="Transactions"
         description="Every movement of money, a month at a time. Each row names the account it moved through and the category it came out of, and every cell is editable where it sits."
-        actions={
-          <>
-            <PeriodStepper period={period} onChange={setPeriod} />
-            <Button variant="primary" onClick={() => setShowAddModal(true)}>
-              Add transaction
-            </Button>
-          </>
-        }
+        // No "Add transaction" of its own: the header carries that door on every
+        // page, and a second button with the same label on the same screen makes
+        // a reader stop and work out whether the two do the same thing.
+        actions={<PeriodStepper period={period} onChange={setPeriod} />}
       />
 
       <ToBeAssignedBar

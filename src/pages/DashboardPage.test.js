@@ -401,6 +401,49 @@ describe("what is due", () => {
   });
 });
 
+describe("funding against the estimate", () => {
+  const funding = (name) => within(row(name)).getAllByRole("cell")[0].textContent;
+
+  test("each row says how it stands against its estimate, in words", () => {
+    seed();
+    renderPage();
+
+    // Rent: $1,500 planned, $1,200 spent, $300 left — exactly what the month
+    // still asks of it.
+    expect(funding("Rent")).toBe("On track");
+    // Groceries: $600 planned and nothing in it.
+    expect(funding("Groceries")).toBe("Underfunded· $600 short");
+    expect(screen.getByText(/1 category short/)).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Funding key" })).toHaveTextContent(
+      /Short.*On track.*Well funded/
+    );
+  });
+
+  test("a month ahead is well funded, and an underfunded row opens to fund it", () => {
+    seed({
+      assignments: [{ id: "as1", budgetId: "b1", period: PERIOD, assignedCents: 300000 }],
+      accounts: [{ ...ACCOUNT, openingBalanceCents: 500000 }],
+    });
+    renderPage();
+
+    // $1,800 left against $300 still to go this month and $1,500 next month.
+    expect(funding("Rent")).toBe("Well funded");
+
+    fireEvent.click(screen.getByRole("button", { name: "Fund Groceries" }));
+    expect(screen.getByLabelText("Move from")).toHaveValue("to-be-assigned");
+    expect(screen.getByLabelText("Move to")).toHaveValue("b2");
+    expect(screen.getByLabelText("Amount to move")).toHaveValue("$600");
+  });
+
+  test("assign income opens from the categories panel", () => {
+    seed();
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Assign income" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});
+
 describe("moving money between categories", () => {
   /** Rent is funded and underspent; Groceries is funded nothing and overspent. */
   function seedShortfall() {
@@ -431,8 +474,8 @@ describe("moving money between categories", () => {
 
   function amounts() {
     return {
-      rent: within(row("Rent")).getAllByRole("cell")[0].textContent,
-      groceries: within(row("Groceries")).getAllByRole("cell")[0].textContent,
+      rent: within(row("Rent")).getAllByRole("cell")[1].textContent,
+      groceries: within(row("Groceries")).getAllByRole("cell")[1].textContent,
     };
   }
 
@@ -442,11 +485,43 @@ describe("moving money between categories", () => {
 
     // Groceries is $400 in the red, so its own figure is the way to settle it.
     fireEvent.click(
-      screen.getByRole("button", { name: "Cover Groceries out of another category" })
+      screen.getByRole("button", { name: "Cover Groceries" })
     );
 
     expect(screen.getByLabelText("Move to")).toHaveValue("b2");
     expect(screen.getByLabelText("Amount to move")).toHaveValue("$400");
+    // The pool holds $500, enough to cover it, so that is where it starts.
+    expect(screen.getByLabelText("Move from")).toHaveValue("to-be-assigned");
+  });
+
+  test("covering from the pool assigns it, and the pool goes down by exactly that", () => {
+    seedShortfall();
+    renderPage();
+
+    const pool = () =>
+      within(screen.getByText("Available to budget").closest("div")).getByText(/^\$/).textContent;
+    expect(pool()).toBe("$500");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cover Groceries" }));
+    expect(screen.getByRole("status")).toHaveTextContent(/To be assigned.*\$500.*\$100/);
+    fireEvent.click(screen.getByRole("button", { name: "Assign it" }));
+
+    expect(amounts()).toEqual({ rent: "$300", groceries: "$0" });
+    expect(pool()).toBe("$100");
+  });
+
+  test("a shortfall the pool cannot cover leaves the source for the user to pick", () => {
+    seedShortfall();
+    // Assign the whole of the pool away first, so nothing is left to cover with.
+    localStorage.setItem(
+      "assignments",
+      JSON.stringify([{ id: "as1", budgetId: "b1", period: PERIOD, assignedCents: 200000 }])
+    );
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cover Groceries" }));
+    expect(screen.getByLabelText("Move from")).toHaveValue("");
+    expect(screen.getByLabelText("Move to")).toHaveValue("b2");
   });
 
   test("a row with money to spare opens the move as the source", () => {
@@ -484,7 +559,7 @@ describe("moving money between categories", () => {
     expect(amounts()).toEqual({ rent: "$300", groceries: "-$400" });
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Cover Groceries out of another category" })
+      screen.getByRole("button", { name: "Cover Groceries" })
     );
     fireEvent.change(screen.getByLabelText("Move from"), { target: { value: "b1" } });
     fireEvent.click(screen.getByRole("button", { name: "Move it" }));

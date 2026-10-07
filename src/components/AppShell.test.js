@@ -77,3 +77,11 @@ test("an unreadable stored mode falls back to the system", () => {
   renderShell();
   expect(document.documentElement).toHaveAttribute("data-theme", "dark");
 });
+
+test("adding a transaction and a transfer are a click away from every page", () => {
+  renderShell();
+  // Closed, nothing is mounted: the header renders above suites with no stores.
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Add transaction" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Transfer" })).toBeInTheDocument();
+});

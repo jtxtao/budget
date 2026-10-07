@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { NavLink } from "react-router-dom";
+import AddTransactionModal from "./AddTransactionModal";
+import { TRANSACTION_KINDS } from "../contexts/TransactionsContext";
 import { navigation } from "../navigation";
 import Button from "./Button";
 import { AUTH_STATUS, useAuth } from "../contexts/AuthContext";
@@ -62,6 +65,7 @@ export default function AppShell({ children }) {
                 far edge where it has always been and the switch tucks in
                 beside it. */}
             <div className="flex flex-wrap items-center gap-3">
+              <QuickEntry />
               <Button
                 variant="canopy"
                 className="rounded-full gap-2"
@@ -97,6 +101,53 @@ export default function AppShell({ children }) {
       </header>
       <main className="mx-auto max-w-6xl px-6 py-9">{children}</main>
     </div>
+  );
+}
+
+/**
+ * Recording money, from every page.
+ *
+ * A receipt turns up while the household is looking at the plan, or the net
+ * worth, or a retirement scenario — and having to walk to the register first is
+ * the kind of friction that turns "log it now" into "log it later". So the one
+ * entry form opens from the header wherever the reader is, and a transfer gets a
+ * door of its own: moving money between two of the household's accounts is
+ * common enough (a card payment, a top-up to savings) that a toggle inside the
+ * form is one decision too many to make every time.
+ *
+ * The modal is **mounted only while open**, unlike the forms the pages keep
+ * mounted: the header renders above every page and in suites with no stores
+ * at all, and a closed dialog nobody asked for would put a second copy of every
+ * field label on every page. Mounting it with `show` already true is still an
+ * open — its re-seed effect runs on mount exactly as it does on a `show` flip.
+ */
+function QuickEntry() {
+  const [kind, setKind] = useState(null);
+
+  return (
+    <>
+      <Button
+        variant="canopy"
+        className="rounded-full"
+        type="button"
+        onClick={() => setKind(TRANSACTION_KINDS.OUTFLOW)}
+      >
+        <span aria-hidden="true">+</span>
+        Add transaction
+      </Button>
+      <Button
+        variant="canopy"
+        className="rounded-full"
+        type="button"
+        onClick={() => setKind(TRANSACTION_KINDS.TRANSFER)}
+      >
+        <span aria-hidden="true">⇄</span>
+        Transfer
+      </Button>
+      {kind != null && (
+        <AddTransactionModal show defaultKind={kind} handleClose={() => setKind(null)} />
+      )}
+    </>
   );
 }
 

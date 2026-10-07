@@ -12,6 +12,7 @@ import { TRANSACTION_KINDS, useTransactions } from "./TransactionsContext";
 import { useAccounts } from "./AccountsContext";
 import { usePayees } from "./PayeesContext";
 import { useAssignments } from "./AssignmentsContext";
+import { TO_BE_ASSIGNED } from "./constants";
 import { useRetirement } from "./RetirementContext";
 import { useSavingsGoals } from "./SavingsGoalsContext";
 import { useSavingsGoalAssignments } from "./SavingsGoalAssignmentsContext";
@@ -1968,6 +1969,46 @@ describe("moving money between two categories", () => {
     // user with a shortfall they can see and cannot settle.
     expect(outcome.ok).toBe(true);
     expect(result.current.getAssignedCents("b2", "2026-01")).toBe(-4000);
+  });
+
+  test("the pool can be either side, and only the category side is written", () => {
+    const result = funded();
+
+    act(() => {
+      result.current.moveBetweenBudgets({
+        fromBudgetId: TO_BE_ASSIGNED,
+        toBudgetId: "b2",
+        period: "2026-01",
+        amountCents: 3000,
+      });
+    });
+    // From the pool is assigning more: b2 gains, b1 is untouched, and no row
+    // is ever written for the pool itself.
+    expect(result.current.getAssignedCents("b2", "2026-01")).toBe(8000);
+    expect(result.current.getAssignedCents("b1", "2026-01")).toBe(20000);
+
+    act(() => {
+      result.current.moveBetweenBudgets({
+        fromBudgetId: "b1",
+        toBudgetId: TO_BE_ASSIGNED,
+        period: "2026-01",
+        amountCents: 20000,
+      });
+    });
+    // Back to the pool is assigning less — all the way to zero, which prunes.
+    expect(result.current.getAssignedCents("b1", "2026-01")).toBe(0);
+    expect(result.current.assignments.map((entry) => entry.budgetId)).toEqual(["b2"]);
+
+    let outcome;
+    act(() => {
+      outcome = result.current.moveBetweenBudgets({
+        fromBudgetId: TO_BE_ASSIGNED,
+        toBudgetId: TO_BE_ASSIGNED,
+        period: "2026-01",
+        amountCents: 1000,
+      });
+    });
+    expect(outcome.ok).toBe(false);
   });
 
   test("zero, a negative, a missing side and a self-move are all refused", () => {

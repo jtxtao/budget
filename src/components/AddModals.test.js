@@ -1538,3 +1538,80 @@ describe("dividing a receipt as it is entered", () => {
     expect(screen.getByLabelText("Category")).toBeInTheDocument();
   });
 });
+
+describe("entering one after another", () => {
+  const CHECKING = { id: "acc1", name: "Everyday", openingBalanceCents: 100000 };
+  const CARD = {
+    id: "acc2",
+    name: "Visa",
+    type: "liability",
+    scope: "credit-card",
+    assetClass: "Other",
+    openingBalanceCents: -20000,
+  };
+  const SAVINGS = { id: "acc3", name: "Savings", openingBalanceCents: 50000 };
+
+  function openHarness() {
+    seedBudgets(TWO_BUDGETS);
+    seedAccounts([CHECKING, CARD, SAVINGS]);
+    render(
+      <Providers>
+        <TransactionHarness budgetIds={["a"]} />
+      </Providers>
+    );
+    fireEvent.click(screen.getByText("open a"));
+  }
+
+  test("save and add another records it, keeps the form open, and clears the receipt", () => {
+    openHarness();
+
+    fireEvent.change(screen.getByLabelText(/paid from/i), { target: { value: "acc2" } });
+    fireEvent.change(screen.getByLabelText(/paid to/i), { target: { value: "Corner Shop" } });
+    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "12.50" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save and add another" }));
+
+    const stored = JSON.parse(localStorage.getItem("transactions"));
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ amountCents: 1250, accountId: "acc2", budgetId: "a" });
+
+    // Still open, saying what landed, on the same account — with the parts that
+    // belong to one receipt gone.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Added $12.50 — Corner Shop");
+    expect(screen.getByLabelText(/amount/i)).toHaveValue("");
+    expect(screen.getByLabelText(/paid to/i)).toHaveValue("");
+    expect(screen.getByLabelText(/paid from/i)).toHaveValue("acc2");
+    expect(screen.getByLabelText(/^date$/i)).toHaveValue(todayISO());
+
+    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(JSON.parse(localStorage.getItem("transactions"))).toHaveLength(2);
+  });
+
+  test("it opens on the account last used, and a transfer on the pair last used", () => {
+    openHarness();
+
+    fireEvent.change(screen.getByLabelText(/paid from/i), { target: { value: "acc2" } });
+    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    fireEvent.click(screen.getByText("open a"));
+    expect(screen.getByLabelText(/paid from/i)).toHaveValue("acc2");
+
+    fireEvent.click(screen.getByRole("button", { name: "Transfer" }));
+    fireEvent.change(screen.getByLabelText(/^from$/i), { target: { value: "acc1" } });
+    fireEvent.change(screen.getByLabelText(/^to$/i), { target: { value: "acc3" } });
+    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "100" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(JSON.parse(localStorage.getItem("transactions"))[1]).toMatchObject({
+      kind: "transfer",
+      accountId: "acc1",
+      toAccountId: "acc3",
+    });
+
+    // Spending still opens on the card — a transfer is not where spending
+    // habits are read from.
+    fireEvent.click(screen.getByText("open a"));
+    expect(screen.getByLabelText(/paid from/i)).toHaveValue("acc2");
+  });
+});

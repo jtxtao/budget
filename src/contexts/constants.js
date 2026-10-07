@@ -9,3 +9,11 @@
  * BudgetsContext re-exports it, so the original import path still works.
  */
 export const UNCATEGORIZED_BUDGET_ID = "Uncategorized";
+
+/**
+ * Stands for "to be assigned" — the pool — on either side of a move between
+ * envelopes. Not a budget id and never stored: an assignment *is* money leaving
+ * the pool, so moving from it is assigning, and moving back to it is assigning
+ * less. `moveBetweenBudgets` reads it and writes only the other side.
+ */
+export const TO_BE_ASSIGNED = "to-be-assigned";

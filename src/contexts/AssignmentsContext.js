@@ -2,7 +2,7 @@ import React, { useCallback, useContext, useMemo } from "react";
 import { v4 as uuidV4 } from "uuid";
 import useSyncedState from "../hooks/useSyncedState";
 import { isSplit, readStoredLedger, TRANSACTION_KINDS } from "./TransactionsContext";
-import { UNCATEGORIZED_BUDGET_ID } from "./constants";
+import { TO_BE_ASSIGNED, UNCATEGORIZED_BUDGET_ID } from "./constants";
 import { currentPeriod, periodLTE, toCents, toPeriod } from "../utils";
 
 /**
@@ -246,12 +246,13 @@ export const AssignmentsProvider = ({ children }) => {
             (assignment) => assignment.budgetId === budgetId && assignment.period === period
           )?.assignedCents ?? 0;
 
-        return upsert(
-          upsert(prevAssignments, fromBudgetId, period, assignedOn(fromBudgetId) - cents),
-          toBudgetId,
-          period,
-          assignedOn(toBudgetId) + cents
-        );
+        const withdrawn =
+          fromBudgetId === TO_BE_ASSIGNED
+            ? prevAssignments
+            : upsert(prevAssignments, fromBudgetId, period, assignedOn(fromBudgetId) - cents);
+        return toBudgetId === TO_BE_ASSIGNED
+          ? withdrawn
+          : upsert(withdrawn, toBudgetId, period, assignedOn(toBudgetId) + cents);
       });
       return { ok: true };
     },

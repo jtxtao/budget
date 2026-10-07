@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useBudgets } from "../contexts/BudgetsContext";
+import { FUNDING, fundingStatus } from "../fundingStatus";
 import { toSections } from "../planLayout";
 import useEnvelopes from "./useEnvelopes";
 
@@ -40,7 +41,7 @@ import useEnvelopes from "./useEnvelopes";
 const isEmpty = (row) => !row.availableCents && !row.assignedCents && !row.activityCents;
 
 function toRow(row, extra) {
-  return {
+  const base = {
     budgetId: row.budgetId,
     name: row.name,
     carriedInCents: row.carriedInCents,
@@ -55,6 +56,26 @@ function toRow(row, extra) {
     // difference as a dash rather than as $0.
     goalCents: row.goalCents,
     ...extra,
+  };
+  // How the row stands against its estimate — see `src/fundingStatus.js`. A
+  // reading of the figures above and nothing else, so it lives on the row
+  // rather than being worked out again wherever the row is drawn.
+  return { ...base, funding: fundingStatus(base) };
+}
+
+/**
+ * How many categories are short, and by how much in all — what the dashboard
+ * says above the table. Overspent and underfunded both count: either way the
+ * envelope will not see the month out.
+ */
+function shortfallOf(rows) {
+  const short = rows.filter(
+    (row) =>
+      row.funding.status === FUNDING.OVERSPENT || row.funding.status === FUNDING.UNDERFUNDED
+  );
+  return {
+    count: short.length,
+    cents: short.reduce((sum, row) => sum + row.funding.shortCents, 0),
   };
 }
 
@@ -124,12 +145,15 @@ export default function useDashboard(period) {
       .filter((row) => !claimed.has(row.budgetId) && !isEmpty(row))
       .map((row) => toRow(row));
 
+    const allRows = [...sections.flatMap((section) => section.rows), ...otherRows];
+
     return {
       period,
       sections,
       otherRows,
       otherTotals: sumRows(otherRows),
-      totals: sumRows([...sections.flatMap((section) => section.rows), ...otherRows]),
+      totals: sumRows(allRows),
+      shortfall: shortfallOf(allRows),
       availableToBudgetCents: envelopes.toBeAssignedCents,
       periodIncomeCents: envelopes.periodIncomeCents,
       periodBudgetedCents: envelopes.periodAssignedCents,

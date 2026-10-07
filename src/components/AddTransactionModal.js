@@ -71,6 +71,18 @@ import { amountAtRest, currentPeriod, formatCents, toCents, todayISO } from "../
  * mirrors its kind — `defaultValue` plus an `onChange`, keyed so a remount takes
  * the seed — and submit reads the state, so there is only ever one copy of the
  * answer.
+ *
+ * **It opens on the accounts last used**, per direction: the account the most
+ * recent spending or income went through, and the pair the most recent transfer
+ * named. A household that pays for everything on one card should not have to
+ * pick that card every time, and a monthly top-up to savings is usually the same
+ * two accounts as last month's. Read off the ledger rather than stored, the
+ * reason `orderPayeesByUse` reads recency the same way.
+ *
+ * **"Save and add another" keeps the form open** on the direction, the accounts,
+ * the date and the category, and clears what is particular to one receipt — the
+ * payee, the amount, the note and any division — with the caret back in the
+ * first field. Entering a shoebox of receipts is one form, not one form each.
  */
 export default function AddTransactionModal({
   show,
@@ -107,6 +119,22 @@ export default function AddTransactionModal({
   // `onChange` rather than from a ref, since a ref cannot make anything
   // re-render; the ref is still what submit reads, so there is one answer.
   const [totalCents, setTotalCents] = useState(null);
+  // Which submit button was pressed. A ref set in the button's click handler,
+  // which runs before the form's submit, because `SubmitEvent.submitter` is not
+  // something every engine this runs on reports.
+  const anotherRef = useRef(false);
+  // Bumped after each "add another", which remounts the payee field and is what
+  // the focus effect below listens for.
+  const [entryCount, setEntryCount] = useState(0);
+  // Bumped on every open, and part of each account select's key. The seeded
+  // account now varies between openings, and a `<select>` that stays mounted
+  // keeps the `defaultValue` it was first given — `form.reset()` returns it to
+  // that, not to the account just worked out. A remount is how it takes the new
+  // one, the same answer the direction's key already gives.
+  const [openCount, setOpenCount] = useState(0);
+  // What the last "add another" recorded, said back so a run of entries is not
+  // made blind.
+  const [lastAdded, setLastAdded] = useState(null);
 
   const { addTransaction, transactions } = useTransactions();
   const { accounts } = useAccounts();
@@ -149,6 +177,32 @@ export default function AddTransactionModal({
     (isTransfer ? accounts.length < 2 : spendable.length === 0) ||
     (isOutflow && budgets.length === 0);
 
+  /**
+   * The accounts this direction was last used with, newest entry first —
+   * `[from, to]`, `to` only for a transfer. The ledger is in the order entries
+   * were logged, so the last match is the most recent habit. A match naming an
+   * account no longer on offer is passed over rather than seeded, or the select
+   * would fall back to showing its first option as though it had been chosen.
+   */
+  function recentAccounts(forKind) {
+    const offered = new Set(
+      (forKind === TRANSACTION_KINDS.TRANSFER ? accounts : spendable).map((account) => account.id)
+    );
+    const known = new Set(accounts.map((account) => account.id));
+    for (let i = transactions.length - 1; i >= 0; i -= 1) {
+      const entry = transactions[i];
+      if (!offered.has(entry.accountId)) continue;
+      if (forKind === TRANSACTION_KINDS.TRANSFER) {
+        if (entry.kind !== TRANSACTION_KINDS.TRANSFER) continue;
+        if (!known.has(entry.toAccountId) || entry.toAccountId === entry.accountId) continue;
+        return [entry.accountId, entry.toAccountId];
+      }
+      if (entry.kind === TRANSACTION_KINDS.TRANSFER) continue;
+      return [entry.accountId, null];
+    }
+    return [null, null];
+  }
+
   // The modal never unmounts — it is toggled by `show` — so nothing clears the
   // last entry, and `defaultValue` on a select only ever applies on the first
   // mount, when the defaults were still undefined. Re-seed on every open.
@@ -161,13 +215,17 @@ export default function AddTransactionModal({
     setTotalCents(null);
     setPayeeId(null);
     setPayeeName("");
+    setLastAdded(null);
+    setOpenCount((count) => count + 1);
     chosenBudgetRef.current = false;
-    // A spending account wherever there is one: it is where money comes from and
-    // where a transfer almost always starts. The destination is whatever else
-    // exists, since a transfer to the account it came from is no movement at all.
-    const from = spendable[0]?.id ?? accounts[0]?.id ?? "";
+    // The accounts last used this way, where there are any. Otherwise a spending
+    // account wherever there is one: it is where money comes from and where a
+    // transfer almost always starts. The destination is whatever else exists,
+    // since a transfer to the account it came from is no movement at all.
+    const [recentFrom, recentTo] = recentAccounts(defaultKind);
+    const from = recentFrom ?? spendable[0]?.id ?? accounts[0]?.id ?? "";
     setFromAccountId(from);
-    setToAccountId(accounts.find((account) => account.id !== from)?.id ?? "");
+    setToAccountId(recentTo ?? accounts.find((account) => account.id !== from)?.id ?? "");
     // Absent while the modal is showing the "nothing to book against" message,
     // which renders in place of the form.
     if (!formRef.current) return;
@@ -191,6 +249,13 @@ export default function AddTransactionModal({
     // in the app. Their contents are read at open, which is when this runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show, defaultKind, defaultBudgetId]);
+
+  // After "add another", the caret goes back to the top of the form, which is
+  // the payee where there is one and the amount on a transfer.
+  useEffect(() => {
+    if (entryCount === 0) return;
+    formRef.current?.querySelector("input")?.focus();
+  }, [entryCount]);
 
   function handleKindChange(next) {
     if (next === kind) return;
@@ -352,7 +417,41 @@ export default function AddTransactionModal({
       return;
     }
 
+    if (anotherRef.current) {
+      anotherRef.current = false;
+      startAnother();
+      return;
+    }
+
     handleClose();
+  }
+
+  /**
+   * Clear what belongs to the receipt just saved and keep the rest. The date
+   * stays because a pile of receipts is usually one day's, and the category
+   * stays as the answer last given — a payee picked next still re-seeds it,
+   * since the flag that says "the user chose this" is reset with the payee.
+   */
+  function startAnother() {
+    const cents = toCents(amountRef.current.value);
+    const name = isTransfer
+      ? null
+      : payeeId
+      ? payees.find((payee) => payee.id === payeeId)?.name
+      : payeeName.trim() || null;
+    setLastAdded(
+      `Added ${formatCents(cents ?? 0)}${name ? ` — ${name}` : ""}. Ready for the next one.`
+    );
+    amountRef.current.value = "";
+    descriptionRef.current.value = "";
+    setTotalCents(null);
+    setPayeeId(null);
+    setPayeeName("");
+    setSplitting(false);
+    setParts([]);
+    setError(null);
+    chosenBudgetRef.current = false;
+    setEntryCount((count) => count + 1);
   }
 
   const describe = (account) => `${account.name} — ${formatCents(balanceById.get(account.id) ?? 0)}`;
@@ -444,7 +543,7 @@ export default function AddTransactionModal({
               // unmounts, and `PayeeField` holds the letters being typed in state
               // of its own that `form.reset()` cannot reach — the same problem the
               // direction and the two accounts have, answered the same way.
-              key={`payee:${show}`}
+              key={`payee:${show}:${entryCount}`}
               label={isOutflow ? "Paid to" : "Received from"}
               payees={orderedPayees}
               value={payeeId}
@@ -474,7 +573,7 @@ export default function AddTransactionModal({
               so a reused element could be left showing an account no longer on
               offer. */}
           <SelectField
-            key={`from:${kind}`}
+            key={`from:${kind}:${openCount}`}
             label={isTransfer ? "From" : isOutflow ? "Paid from" : "Paid into"}
             defaultValue={fromAccountId}
             onChange={(e) => handleFromChange(e.target.value)}
@@ -491,7 +590,7 @@ export default function AddTransactionModal({
             // a remount is how it picks up the destination `handleFromChange`
             // moved out of the way.
             <SelectField
-              key={`to:${fromAccountId}`}
+              key={`to:${fromAccountId}:${openCount}`}
               label="To"
               defaultValue={toAccountId}
               onChange={(e) => setToAccountId(e.target.value)}
@@ -578,9 +677,32 @@ export default function AddTransactionModal({
               {error}
             </p>
           )}
-          <div className="flex justify-end">
-            <Button variant="primary" type="submit">
+          {lastAdded && !error && (
+            <p role="status" className="-mt-2 mb-5 font-sans text-row text-verdant">
+              {lastAdded}
+            </p>
+          )}
+          {/* Add comes first in the source and is drawn last: pressing Enter in a
+              field submits through the form's *first* submit button, and Enter
+              has always meant "add this and close". */}
+          <div className="flex flex-row-reverse flex-wrap justify-start gap-2">
+            <Button
+              variant="primary"
+              type="submit"
+              onClick={() => {
+                anotherRef.current = false;
+              }}
+            >
               Add
+            </Button>
+            <Button
+              variant="outline"
+              type="submit"
+              onClick={() => {
+                anotherRef.current = true;
+              }}
+            >
+              Save and add another
             </Button>
           </div>
         </form>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import AssignIncomeModal from "../components/AssignIncomeModal";
 import CategoryLedgerTable from "../components/CategoryLedgerTable";
 import DashboardSummary from "../components/DashboardSummary";
 import EnterScheduledModal from "../components/EnterScheduledModal";
@@ -8,9 +9,11 @@ import ReconciliationList from "../components/ReconciliationList";
 import UpcomingBills from "../components/UpcomingBills";
 import { spendsThroughBudget, useAccounts } from "../contexts/AccountsContext";
 import { useBudgets } from "../contexts/BudgetsContext";
+import { TO_BE_ASSIGNED } from "../contexts/constants";
 import { usePayees } from "../contexts/PayeesContext";
 import { useSchedules } from "../contexts/SchedulesContext";
 import { TRANSACTION_KINDS, useTransactions } from "../contexts/TransactionsContext";
+import { FUNDING } from "../fundingStatus";
 import useAccountBalances from "../hooks/useAccountBalances";
 import useDashboard from "../hooks/useDashboard";
 import useNextPaycheck from "../hooks/useNextPaycheck";
@@ -61,6 +64,7 @@ export default function DashboardPage() {
   // mounted and re-seeds off this object — a fresh literal every render would
   // reset the form under the user mid-type.
   const [moving, setMoving] = useState(null);
+  const [assigning, setAssigning] = useState(false);
 
   // What went out this month, less what came back into a category: a refund
   // undoes that much of the spending it answers, the way each category's own
@@ -161,6 +165,37 @@ export default function DashboardPage() {
   }
 
   /**
+   * Open the move on a category, with the direction read off its funding.
+   *
+   * A row that is short — overspent, or underfunded against its estimate — is
+   * one somebody wants to *fund*, so it seeds as the destination with the
+   * shortfall already typed in. The source is "to be assigned" whenever the
+   * pool can cover that figure, since unassigned money is the first place a
+   * household looks; otherwise it is left for them to pick, because which
+   * neighbour gives something up is not the app's call. Any other row has
+   * money to spare and seeds as the source. Stated on each button's label, so
+   * the rule is read before the click rather than discovered after it. `null`
+   * is the header button: no direction assumed, both selects empty.
+   */
+  function handleMove(row) {
+    if (row == null) {
+      setMoving({});
+      return;
+    }
+    const { status, shortCents } = row.funding;
+    if (status === FUNDING.OVERSPENT || status === FUNDING.UNDERFUNDED) {
+      setMoving({
+        fromBudgetId:
+          dashboard.availableToBudgetCents >= shortCents ? TO_BE_ASSIGNED : undefined,
+        toBudgetId: row.budgetId,
+        amountCents: shortCents,
+      });
+      return;
+    }
+    setMoving({ fromBudgetId: row.budgetId });
+  }
+
+  /**
    * Deal with an occurrence without recording anything.
    *
    * A month the gym was closed, a subscription cancelled after the schedule was
@@ -168,28 +203,6 @@ export default function DashboardPage() {
    * touches no money at all, which is the one thing a bill reminder has to be able
    * to do without lying about the books.
    */
-  /**
-   * Open the move on a category, with the direction read off its own figure.
-   *
-   * A row in the red is one somebody wants to *cover*, so it seeds as the
-   * destination with the shortfall already typed in — the figure they were
-   * looking at when they clicked. Any other row is one with money to spare, so
-   * it seeds as the source. Stated on each button's label, so the rule is read
-   * before the click rather than discovered after it. `null` is the header
-   * button: no direction assumed, both selects empty.
-   */
-  function handleMove(row) {
-    if (row == null) {
-      setMoving({});
-      return;
-    }
-    setMoving(
-      row.availableCents < 0
-        ? { toBudgetId: row.budgetId, amountCents: -row.availableCents }
-        : { fromBudgetId: row.budgetId }
-    );
-  }
-
   function handleSkip(row) {
     const result = advanceSchedule({ id: row.schedule.id, through: row.date });
     setScheduleError(result.ok ? null : result.error);
@@ -240,7 +253,9 @@ export default function DashboardPage() {
             otherRows={dashboard.otherRows}
             otherTotals={dashboard.otherTotals}
             totals={dashboard.totals}
+            shortfall={dashboard.shortfall}
             onMove={handleMove}
+            onAssign={() => setAssigning(true)}
           />
         </div>
         {/* Upcoming above the accounts in the narrow column: it is the one panel
@@ -279,6 +294,12 @@ export default function DashboardPage() {
         period={period}
         seed={moving}
         handleClose={() => setMoving(null)}
+      />
+
+      <AssignIncomeModal
+        show={assigning}
+        period={period}
+        handleClose={() => setAssigning(false)}
       />
 
       <EnterScheduledModal
