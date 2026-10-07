@@ -8,7 +8,7 @@ import { insideBudget, useAccounts } from "../contexts/AccountsContext";
 import { budgetLegs, TRANSACTION_KINDS, useTransactions } from "../contexts/TransactionsContext";
 import { UNCATEGORIZED_BUDGET_ID } from "../contexts/constants";
 import { toSections } from "../planLayout";
-import { addMonths, periodLTE, toPeriod } from "../utils";
+import { addMonths, currentPeriod, formatPeriod, periodLTE, toPeriod } from "../utils";
 
 /**
  * What the books did over a **window of months** — where the money went, how
@@ -107,9 +107,18 @@ import { addMonths, periodLTE, toPeriod } from "../utils";
  * by month and a range that cut a month in half would report a rent payment in
  * whichever half it landed. Each one is inclusive of both ends.
  *
- * "All" is the only one that needs to know anything about the ledger, which is
- * why every `start` takes the first month on the books as well as the end month
- * — a signature the other four ignore.
+ * **Five are derived from the end month and one is typed.** The presets answer
+ * "how far back", which is the question a reader usually has, and they always
+ * run to the current month — so the last column is a month still in progress.
+ * "Custom" is the one window that names both of its ends, which is what lets a
+ * report cover a calendar year, or a year that has already finished. It is a
+ * sixth preset rather than a mode: everything below it reads the window the same
+ * way whichever produced it.
+ *
+ * "All" is the only one that needs to know anything about the ledger, and
+ * "custom" the only one that needs to know what the reader typed, which is why
+ * every `start` takes the first month on the books and the chosen start as well
+ * as the end month — a signature the other four ignore.
  */
 export const REPORT_RANGES = [
   { key: "3m", label: "3M", name: "the last 3 months", start: (end) => addMonths(end, -2) },
@@ -129,9 +138,49 @@ export const REPORT_RANGES = [
     name: "every month on the books",
     start: (end, first) => first ?? end,
   },
+  {
+    key: "custom",
+    label: "Custom",
+    // Replaced by the hook with the two months themselves, which is the only
+    // honest name a window nobody can infer from a label can have.
+    name: "the months you chose",
+    // The one range whose start is neither counted back from the end month nor
+    // read off the ledger: it is handed in. The end month is the reader's too,
+    // which makes this the only range that can name a window **not running to
+    // today** — the whole reason it exists, and the reason it is the only one
+    // the coverage bound below can bite at the far end for.
+    start: (end, first, chosen) => chosen ?? end,
+  },
 ];
 
 export const DEFAULT_REPORT_RANGE = "12m";
+
+/** The one range that reads its own two months rather than deriving them. */
+export const CUSTOM_REPORT_RANGE = "custom";
+
+/**
+ * The buckets a month's spending divides into, as a fixed list in a fixed
+ * order — the plan's four, and then everything that could not be filed under
+ * one.
+ *
+ * The fifth entry is not a fifth bucket. It is the Uncategorized sentinel and
+ * any id whose category has since been deleted, and it exists because the
+ * segments of a stack have to add up to the figure the stack is drawn against.
+ * Dropping it would quietly describe a smaller household than the headline
+ * above does.
+ *
+ * `key` is here rather than left to each caller because `bucket` is null for
+ * that fifth entry and a null React key is a warning and a bug waiting for the
+ * next entry to be added beside it.
+ */
+export const BUCKET_SERIES = [
+  ...PLAN_BUCKET_ORDER.map((bucket) => ({
+    bucket,
+    key: bucket,
+    label: PLAN_BUCKET_LABELS[bucket],
+  })),
+  { bucket: null, key: "unfiled", label: "No category" },
+];
 
 /**
  * The ceiling on "all", in months.
@@ -151,12 +200,12 @@ const MAX_WINDOW_MONTHS = 120;
  * future-dated records, a hand-edited period — would otherwise produce an empty
  * month list, and every figure downstream would divide by it.
  */
-function windowFor(endPeriod, rangeKey, firstPeriod) {
+function windowFor(endPeriod, rangeKey, firstPeriod, chosenStartPeriod) {
   const range =
     REPORT_RANGES.find((entry) => entry.key === rangeKey) ??
     REPORT_RANGES.find((entry) => entry.key === DEFAULT_REPORT_RANGE);
 
-  let start = range.start(endPeriod, firstPeriod);
+  let start = range.start(endPeriod, firstPeriod, chosenStartPeriod);
   if (!periodLTE(start, endPeriod)) start = endPeriod;
 
   const floor = addMonths(endPeriod, -(MAX_WINDOW_MONTHS - 1));
@@ -207,7 +256,11 @@ const emptyCategory = (budgetId) => ({
  * @param endPeriod the last month in the window, inclusive
  * @param rangeKey  one of `REPORT_RANGES`
  */
-export default function useSpendingReport(endPeriod, rangeKey = DEFAULT_REPORT_RANGE) {
+export default function useSpendingReport(
+  endPeriod,
+  rangeKey = DEFAULT_REPORT_RANGE,
+  chosenStartPeriod = null
+) {
   const { groups, budgets } = useBudgets();
   const { transactions } = useTransactions();
   // Read for one reason only: a transfer's effect on the books depends on which
@@ -226,15 +279,84 @@ export default function useSpendingReport(endPeriod, rangeKey = DEFAULT_REPORT_R
       if (period != null && (firstPeriod == null || period < firstPeriod)) firstPeriod = period;
     }
 
-    const { range, months } = windowFor(endPeriod, rangeKey, firstPeriod);
+    const { range, months } = windowFor(endPeriod, rangeKey, firstPeriod, chosenStartPeriod);
     const startPeriod = months[0];
+    // A custom window has no label anybody could read a span off, so it is named
+    // by the two months it actually is. One month names itself rather than
+    // reading "October 2026 to October 2026", and the name is derived here
+    // rather than stored on the entry because only this scope knows what the
+    // guards above settled the window at.
+    const namedRange =
+      range.key === CUSTOM_REPORT_RANGE
+        ? {
+            ...range,
+            name:
+              startPeriod === endPeriod
+                ? formatPeriod(startPeriod)
+                : `${formatPeriod(startPeriod)} to ${formatPeriod(endPeriod)}`,
+          }
+        : range;
 
     const byMonth = new Map(
       months.map((period) => [
         period,
-        { period, incomeCents: 0, spentCents: 0, refundCents: 0 },
+        // `byBucket` is this month's net spend split four ways plus unfiled —
+        // the same cut `buckets` reports over the whole window, kept per month
+        // so the plan-against-books chart can stack a column out of it. Built
+        // in this pass rather than by a second walk of the ledger, for the
+        // reason the drill-in's `monthly` is: two walks can disagree about the
+        // refund rule or about which month a record falls in, and nothing
+        // downstream would be in a position to notice.
+        { period, incomeCents: 0, spentCents: 0, refundCents: 0, byBucket: new Map() },
       ])
     );
+
+    // Which heading and which bucket each category is filed under, and what the
+    // plan intends for it. Read off the sections rather than the flat list,
+    // exactly as `usePlanHealth` does: resolving what a category counts as needs
+    // its group beside it, and `toSections` has already done that once.
+    //
+    // Built **before** the ledger walk rather than after it, because the walk
+    // now needs each leg's bucket as it goes.
+    const filing = new Map();
+    const plannedByBucket = new Map(PLAN_BUCKET_ORDER.map((bucket) => [bucket, 0]));
+    for (const section of toSections(groups, budgets)) {
+      for (const budget of section.budgets) {
+        filing.set(budget.id, {
+          name: budget.name,
+          groupName: section.name,
+          bucket: budget.effectiveBucket,
+          targetCents: budget.plannedCents,
+        });
+        if (plannedByBucket.has(budget.effectiveBucket)) {
+          plannedByBucket.set(
+            budget.effectiveBucket,
+            plannedByBucket.get(budget.effectiveBucket) + budget.plannedCents
+          );
+        }
+      }
+    }
+
+    /**
+     * What the plan intends to spend in a month, and the one figure on this
+     * hook that is not read off the books.
+     *
+     * It is **every** category's standing estimate, including the ones that
+     * spent nothing in the window — an estimate for a category that was quiet
+     * all year is still part of what the plan set aside, and dropping it would
+     * make the plan appear to shrink in exactly the months the household
+     * underspent.
+     *
+     * **Deliberately not `usePlanHealth`'s `plannedCents`**, which is the same
+     * sum grossed up by `pretaxContributionCents`. That figure is right for the
+     * question that hook asks — does the standing configuration balance against
+     * what the household earns — and wrong for this one. A pre-tax payroll
+     * deduction never becomes a transaction, so the books can never show it;
+     * comparing a plan that counts it against spending that structurally cannot
+     * would draw a permanent gap the household could never close by spending
+     * differently. Like against like, which here means the categories only.
+     */
+    const plannedCents = budgets.reduce((sum, budget) => sum + budget.plannedCents, 0);
 
     const byCategory = new Map();
     const categoryEntry = (budgetId) => {
@@ -305,11 +427,23 @@ export default function useSpendingReport(endPeriod, rangeKey = DEFAULT_REPORT_R
           continue;
         }
 
-        const entry = categoryEntry(leg.budgetId ?? UNCATEGORIZED_BUDGET_ID);
+        const budgetId = leg.budgetId ?? UNCATEGORIZED_BUDGET_ID;
+        const entry = categoryEntry(budgetId);
         const field = inflow ? "refundCents" : "spentCents";
         month[field] += amountCents;
         entry[field] += amountCents;
         entry.months.add(period);
+
+        // The month's own bucket split, signed the way `netSpentCents` is: a
+        // refund comes back off the bucket it was filed under rather than
+        // landing anywhere else. A category filed under no bucket — the
+        // Uncategorized sentinel, or an id whose category was deleted — keys on
+        // null and gets a segment of its own, because the segments have to add
+        // up to the month's spending or the stack describes a smaller month
+        // than the column it is drawn in.
+        const bucket = filing.get(budgetId)?.bucket ?? null;
+        const signed = inflow ? -amountCents : amountCents;
+        month.byBucket.set(bucket, (month.byBucket.get(bucket) ?? 0) + signed);
 
         let entryMonth = entry.monthly.get(period);
         if (!entryMonth) {
@@ -348,26 +482,28 @@ export default function useSpendingReport(endPeriod, rangeKey = DEFAULT_REPORT_R
     // three months of records by twelve understates every category by four, and
     // silently, so the divisor stops at the first month on file and the page
     // prints what it was.
-    const covered = months.filter((period) => firstPeriod == null || periodLTE(firstPeriod, period));
+    //
+    // **Clipped at both ends, and the far end is the calendar's.** A window that
+    // ends at the current month — which every preset does — has nothing to clip
+    // there, but a custom window may be asked to run to December while it is
+    // still October, and counting those two unlived months in the divisor would
+    // understate every figure on the page by a sixth. A month that has not
+    // happened is as empty as one nobody wrote anything down in, and for a
+    // better reason.
+    const thisMonth = currentPeriod();
+    const covered = months.filter(
+      (period) =>
+        (firstPeriod == null || periodLTE(firstPeriod, period)) && periodLTE(period, thisMonth)
+    );
     const averagedOverMonths = Math.max(1, covered.length);
     const coverageStartPeriod = covered[0] ?? startPeriod;
+    // The last month in the window the books could have anything to say about.
+    // Reported alongside the start so the chart and its table twin can withhold
+    // a verdict past the present exactly as they withhold one before the first
+    // record — the plan's threshold is still drawn across both, because a
+    // standing figure neither began when the records did nor ends at today.
+    const coverageEndPeriod = covered[covered.length - 1] ?? coverageStartPeriod;
     const perMonth = (cents) => Math.round(cents / averagedOverMonths);
-
-    // Which heading and which bucket each category is filed under. Read off the
-    // sections rather than the flat list, exactly as `usePlanHealth` does:
-    // resolving what a category counts as needs its group beside it, and
-    // `toSections` has already done that once.
-    const filing = new Map();
-    for (const section of toSections(groups, budgets)) {
-      for (const budget of section.budgets) {
-        filing.set(budget.id, {
-          name: budget.name,
-          groupName: section.name,
-          bucket: budget.effectiveBucket,
-          targetCents: budget.plannedCents,
-        });
-      }
-    }
 
     const series = months.map((period) => {
       const month = byMonth.get(period);
@@ -378,6 +514,20 @@ export default function useSpendingReport(endPeriod, rangeKey = DEFAULT_REPORT_R
         // Signed, and it is cash: what came in less what went out, for this
         // month alone. Nothing carries forward — that is the balance's job.
         netCents: month.incomeCents - netSpentCents,
+        // The month's spending split by bucket, in `PLAN_BUCKET_ORDER` with
+        // unfiled last — a fixed list in a fixed order, including the buckets
+        // this month spent nothing in. A stacked chart has to be able to colour
+        // a series by its position, and a list that dropped its empty entries
+        // would hand the same index to different buckets in different months.
+        buckets: BUCKET_SERIES.map((entry) => ({
+          ...entry,
+          netSpentCents: month.byBucket.get(entry.bucket) ?? 0,
+        })),
+        // What the plan intended for this same month. Standing, so it is the
+        // same figure in every month of the window — which is exactly what
+        // makes it readable as a threshold the columns cross rather than as a
+        // second series with a shape of its own.
+        plannedCents,
       };
     });
 
@@ -460,14 +610,15 @@ export default function useSpendingReport(endPeriod, rangeKey = DEFAULT_REPORT_R
       } else unfiledCents += row.netSpentCents;
     }
 
-    const buckets = [
-      ...PLAN_BUCKET_ORDER.map((bucket) => ({
-        bucket,
-        label: PLAN_BUCKET_LABELS[bucket],
-        netSpentCents: bucketTotals.get(bucket),
-      })),
-      { bucket: null, label: "No category", netSpentCents: unfiledCents },
-    ]
+    const buckets = BUCKET_SERIES.map((entry) => ({
+      ...entry,
+      netSpentCents: entry.bucket == null ? unfiledCents : bucketTotals.get(entry.bucket),
+      // What the plan sets aside for this bucket every month. Null for the
+      // unfiled segment rather than zero: there is no estimate for "no
+      // category", and a zero there would read as a plan to spend nothing on
+      // it, which is a claim nobody made.
+      plannedCents: entry.bucket == null ? null : plannedByBucket.get(entry.bucket),
+    }))
       .filter((entry) => entry.netSpentCents !== 0)
       .map((entry) => ({
         ...entry,
@@ -476,7 +627,7 @@ export default function useSpendingReport(endPeriod, rangeKey = DEFAULT_REPORT_R
       }));
 
     return {
-      range,
+      range: namedRange,
       months,
       startPeriod,
       endPeriod,
@@ -497,8 +648,28 @@ export default function useSpendingReport(endPeriod, rangeKey = DEFAULT_REPORT_R
       // not saved −∞ percent, it has a gap in its records.
       savingsRateBps: shareBps(totalIncomeCents - netSpentCents, totalIncomeCents),
 
+      // What the plan intends in a month, against which every column of the
+      // plan-and-books chart is read. Standing rather than per-month, so the
+      // same figure answers for every month in the window — see the note where
+      // it is computed for why it is not `usePlanHealth`'s figure.
+      plannedCents,
+      // The window's plan: the standing monthly figure times the months the
+      // books actually cover, which is the total the window's spending is
+      // fairly held against. Times `averagedOverMonths` and not `months.length`
+      // for the same reason the per-month average divides by it — a twelve-month
+      // window over three months of records would otherwise be compared with a
+      // year of plan.
+      plannedWindowCents: plannedCents * averagedOverMonths,
+
       averagedOverMonths,
       coverageStartPeriod,
+      coverageEndPeriod,
+      // How many months the books could actually cover, which is
+      // `averagedOverMonths` without its floor of one — and zero is a real
+      // answer, for a custom window made entirely of months that have not
+      // happened. The divisor cannot be zero, but the sentence about it has to
+      // be able to say so.
+      coveredMonths: covered.length,
       averageIncomeCents: perMonth(totalIncomeCents),
       averageSpendCents: perMonth(netSpentCents),
       averageNetCents: perMonth(totalIncomeCents - netSpentCents),
@@ -512,5 +683,5 @@ export default function useSpendingReport(endPeriod, rangeKey = DEFAULT_REPORT_R
       hasLedger: transactions.length > 0,
       firstPeriod,
     };
-  }, [groups, budgets, transactions, accounts, endPeriod, rangeKey]);
+  }, [groups, budgets, transactions, accounts, endPeriod, rangeKey, chosenStartPeriod]);
 }

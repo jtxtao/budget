@@ -1,8 +1,7 @@
-import { Link } from "react-router-dom";
-import { isOffBudget, scopeLabel } from "../contexts/AccountsContext";
+import AccountPicker from "./AccountPicker";
 import { STARTING_SOURCES } from "../contexts/RetirementContext";
 import SourceChoice from "./SourceChoice";
-import { formatCents, formatPeriod } from "../utils";
+import { formatCents } from "../utils";
 
 /**
  * What the plan starts from: the accounts the user counts as retirement money,
@@ -19,10 +18,10 @@ import { formatCents, formatPeriod } from "../utils";
  * The choice not in force is kept, not cleared — see the note in
  * `RetirementContext`. Toggling back and forth to compare is the point.
  *
- * Nothing here is editable beyond the tick: the values are `useNetWorth`'s, and
- * an account is corrected where it is owned, on the balance sheet. What a row
- * does say is where its figure came from, because a holding last valued in March
- * is being counted at March's figure and a plan built on it should say so.
+ * The list itself is `AccountPicker`, shared with the emergency fund's panel —
+ * the same question asked twice, and a row that said where its figure came from
+ * in two different ways would be two panels a reader could not check against
+ * each other.
  */
 
 const labelClass = "mb-1.5 block font-mono text-label uppercase text-chalk-soft";
@@ -39,42 +38,6 @@ const STARTING_OPTIONS = [
   { value: STARTING_SOURCES.MANUAL, label: "A balance I enter" },
 ];
 
-/** The month a hand-valued holding was last given a figure, or where a derived
- *  one comes from. The same distinction `HoldingsTable` draws, said shorter —
- *  this is a picker, not the balance sheet. */
-function sourceNote(row) {
-  if (!row.hand) return isOffBudget(row.account) ? "Never valued" : "From the ledger";
-  return `Valued ${formatPeriod(row.asOf)}`;
-}
-
-function AccountRow({ row, striped, onToggle }) {
-  return (
-    <tr className={striped ? "bg-sheet-alt" : "bg-sheet"}>
-      <th scope="row" className="px-4 py-2 text-left font-sans text-row font-normal text-ink">
-        <label className="flex cursor-pointer items-center gap-2.5">
-          <input
-            type="checkbox"
-            checked={row.included}
-            onChange={(event) => onToggle({ accountId: row.account.id, included: event.target.checked })}
-            className="h-3.5 w-3.5 shrink-0 accent-ink-soft"
-          />
-          <span>{row.account.name}</span>
-        </label>
-      </th>
-      <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-label uppercase text-ink-soft">
-        {scopeLabel(row.account)} · {sourceNote(row)}
-      </td>
-      <td
-        className={`whitespace-nowrap px-3 py-2 text-right font-mono text-row tabular-nums ${
-          row.included ? "font-medium text-ink" : "text-ink-soft"
-        }`}
-      >
-        {formatCents(row.valueCents)}
-      </td>
-    </tr>
-  );
-}
-
 export default function RetirementStartingPoint({
   plan,
   accountRows,
@@ -84,15 +47,7 @@ export default function RetirementStartingPoint({
   onToggleAccount,
 }) {
   const byAccounts = plan.startingSource === STARTING_SOURCES.ACCOUNTS;
-
-  // Off budget first: those are the accounts this question is usually about,
-  // and a list that opened on the current account would bury them. Stable
-  // within each half, so nothing moves when a box is ticked.
-  const rows = [
-    ...accountRows.filter((row) => isOffBudget(row.account)),
-    ...accountRows.filter((row) => !isOffBudget(row.account)),
-  ];
-  const chosen = rows.filter((row) => row.included).length;
+  const chosen = accountRows.filter((row) => row.included).length;
 
   return (
     <section className="border border-edge bg-panel">
@@ -102,7 +57,7 @@ export default function RetirementStartingPoint({
         </h2>
         <span className="font-mono text-label uppercase text-chalk-soft">
           {byAccounts
-            ? `${chosen} of ${rows.length} accounts`
+            ? `${chosen} of ${accountRows.length} accounts`
             : "Not read from your accounts"}
         </span>
       </div>
@@ -118,55 +73,16 @@ export default function RetirementStartingPoint({
       </div>
 
       {byAccounts ? (
-        rows.length === 0 ? (
-          <p className="px-4 py-5 font-sans text-row text-chalk-soft">
-            No accounts yet.{" "}
-            <Link to="/plan" className="text-azure underline underline-offset-2 hover:text-chalk">
-              Add them on the budget plan
-            </Link>{" "}
-            — the retirement and brokerage accounts belong off budget, where the net-worth page
-            values them.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-panel-raised">
-                  <th scope="col" className="px-4 py-2 text-left font-mono text-label uppercase text-chalk">
-                    Account
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-right font-mono text-label uppercase text-chalk">
-                    Where the figure comes from
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-right font-mono text-label uppercase text-chalk">
-                    Value
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, index) => (
-                  <AccountRow
-                    key={row.account.id}
-                    row={row}
-                    striped={index % 2 === 1}
-                    onToggle={onToggleAccount}
-                  />
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="bg-panel-raised">
-                  <th scope="row" className="px-4 py-2 text-left font-mono text-label uppercase text-chalk">
-                    Counted as retirement savings
-                  </th>
-                  <td />
-                  <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-row font-medium tabular-nums text-chalk">
-                    {formatCents(selectedCents)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )
+        <AccountPicker
+          rows={accountRows}
+          // Off budget first: those are the accounts this question is usually
+          // about, and a list that opened on the current account would bury them.
+          holdingsFirst
+          totalLabel="Counted as retirement savings"
+          totalCents={selectedCents}
+          emptyNote="the retirement and brokerage accounts belong off budget, where the net-worth page values them."
+          onToggle={onToggleAccount}
+        />
       ) : (
         <div className="px-4 py-4">
           <label>

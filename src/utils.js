@@ -298,6 +298,25 @@ export function addMonths(period, delta) {
   return `${shifted.getFullYear()}-${pad(shifted.getMonth() + 1)}`;
 }
 
+/**
+ * The last calendar day of a period, as "YYYY-MM-DD".
+ *
+ * Day 0 of the *following* month, which is how JavaScript's own Date spells
+ * "the last day of this one" — so February knows about leap years and nothing
+ * here carries a table of month lengths. Local calendar throughout, like
+ * `todayISO`: `toISOString` is UTC and would hand back the 30th for a month
+ * ending on the 31st anywhere west of Greenwich.
+ *
+ * What it is for: a record that has to fall inside a stated month without
+ * claiming to have happened on a particular day — a balance correction against
+ * a month-end statement being the case that wanted it.
+ */
+export function periodEnd(period) {
+  if (toPeriod(period) == null) return null;
+  const [year, month] = period.split("-").map(Number);
+  return todayISO(new Date(year, month, 0));
+}
+
 /** "2026-08" -> "August 2026", for period steppers and headings. */
 export function formatPeriod(period) {
   if (toPeriod(period) == null) return "Undated";

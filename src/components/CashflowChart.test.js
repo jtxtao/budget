@@ -177,3 +177,44 @@ test("a decade thins the month labels instead of printing a hundred and twenty",
   expect(labels[labels.length - 1].textContent).toContain("Aug");
   expect(labels[labels.length - 1].textContent).toContain("2026");
 });
+
+test("the net line spans the months the books cover and stops there", () => {
+  // Twelve columns, records in the last three of them and two months of the
+  // window still to come — the shape a custom window makes.
+  const series = monthsTo("2026-12", 12, (index) =>
+    index >= 7 && index <= 9 ? { income: 500000, spent: 260000 } : {}
+  );
+
+  const { container } = render(
+    <CashflowChart
+      series={series}
+      coverageStartPeriod="2026-08"
+      coverageEndPeriod="2026-10"
+    />
+  );
+
+  // One run, three points. A line drawn across the empty columns would be the
+  // claim that the household broke even in months nobody recorded or has lived.
+  const runs = [...container.querySelectorAll("polyline")];
+  expect(runs).toHaveLength(1);
+  expect(runs[0].getAttribute("points").trim().split(/\s+/)).toHaveLength(3);
+
+  // And the end label sits on the last month the line reaches, not on the last
+  // column — a figure floating past the end of a broken line would name the one
+  // month the line declined to describe.
+  const label = screen.getByText("$2.4K");
+  const dot = container.querySelector("circle");
+  expect(Number(label.getAttribute("y"))).toBeCloseTo(Number(dot.getAttribute("cy")), 5);
+  const lastRunPoint = runs[0].getAttribute("points").trim().split(/\s+/).pop();
+  expect(Number(lastRunPoint.split(",")[0])).toBeCloseTo(Number(dot.getAttribute("cx")), 5);
+});
+
+test("with no coverage stated the line spans every month, as it always did", () => {
+  const series = monthsTo("2026-08", 6, () => ({ income: 500000, spent: 260000 }));
+
+  const { container } = draw(series);
+
+  const runs = [...container.querySelectorAll("polyline")];
+  expect(runs).toHaveLength(1);
+  expect(runs[0].getAttribute("points").trim().split(/\s+/)).toHaveLength(6);
+});

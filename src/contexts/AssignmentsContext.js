@@ -197,6 +197,68 @@ export const AssignmentsProvider = ({ children }) => {
   );
 
   /**
+   * Move money from one category to another, in one write.
+   *
+   * Envelope budgeting's other everyday act, beside assigning income: groceries
+   * came in under and dining out went over, so the difference moves across. It
+   * is expressible already — assign the source less and the destination more —
+   * but only as *two* edits with the pool briefly inflated by money that was
+   * never free, and the user has to hold the arithmetic in their head between
+   * them. This is the one action, so there is nothing in between to see.
+   *
+   * **The two deltas cancel, so `toBeAssigned` is untouched by construction.**
+   * That is the whole reason this is one `setAssignments` call rather than two
+   * `setAssignedAmount` calls: the invariant in `dataModel.test.js` holds at
+   * every commit, not merely once both halves have landed, and a failure
+   * between them cannot leave money parked in the pool.
+   *
+   * A move is a positive amount in a stated direction, so zero and negative are
+   * refused rather than quietly reversing the two selects — the direction is
+   * what the form asked, and an amount is not the place to contradict it.
+   *
+   * Deliberately **not** refused for leaving the source overdrawn, which this
+   * store could not check anyway (available is a cross-store sum over the whole
+   * ledger, and this store sees only assignments). Covering one category out of
+   * another that has not been funded yet is a real thing to want in the days
+   * before a paycheque, and the app already has exactly one way of saying so:
+   * the source goes red. `MoveMoneyModal` states what each side will be left
+   * with before the write, which is where the figure is in hand.
+   */
+  const moveBetweenBudgets = useCallback(
+    ({ fromBudgetId, toBudgetId, period, amount, amountCents }) => {
+      const cents = amountCents ?? toCents(amount);
+      if (cents == null) return { ok: false, error: "Enter an amount." };
+      if (cents <= 0) return { ok: false, error: "Enter an amount greater than zero." };
+      if (fromBudgetId == null || toBudgetId == null) {
+        return { ok: false, error: "Choose a category to move from and one to move to." };
+      }
+      if (fromBudgetId === toBudgetId) {
+        return { ok: false, error: "Choose two different categories." };
+      }
+      if (toPeriod(period) == null) return { ok: false, error: "Enter a valid period." };
+
+      setAssignments((prevAssignments) => {
+        // Both read off `prevAssignments` before either upsert. Safe because the
+        // two ids differ — checked above — so neither upsert can disturb the row
+        // the other is about.
+        const assignedOn = (budgetId) =>
+          prevAssignments.find(
+            (assignment) => assignment.budgetId === budgetId && assignment.period === period
+          )?.assignedCents ?? 0;
+
+        return upsert(
+          upsert(prevAssignments, fromBudgetId, period, assignedOn(fromBudgetId) - cents),
+          toBudgetId,
+          period,
+          assignedOn(toBudgetId) + cents
+        );
+      });
+      return { ok: true };
+    },
+    [setAssignments]
+  );
+
+  /**
    * Move a category's whole assignment history onto another category, in one
    * commit. Used when a category is deleted: its expenses are reassigned rather
    * than dropped, so its funding has to follow them. Dropping the assignments
@@ -233,6 +295,7 @@ export const AssignmentsProvider = ({ children }) => {
       getPeriodAssignments,
       setAssignedAmount,
       setPeriodAssignments,
+      moveBetweenBudgets,
       reassignBudgetAssignments,
     }),
     [
@@ -241,6 +304,7 @@ export const AssignmentsProvider = ({ children }) => {
       getPeriodAssignments,
       setAssignedAmount,
       setPeriodAssignments,
+      moveBetweenBudgets,
       reassignBudgetAssignments,
     ]
   );

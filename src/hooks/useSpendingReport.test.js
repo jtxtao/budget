@@ -2,7 +2,7 @@ import { renderHook } from "@testing-library/react";
 import AppProviders from "../contexts/AppProviders";
 import { TRANSACTION_KINDS } from "../contexts/TransactionsContext";
 import useSpendingReport from "./useSpendingReport";
-import { toPeriod } from "../utils";
+import { addMonths, currentPeriod, toPeriod } from "../utils";
 
 /**
  * The report reads across the ledger and the plan, so these drive it through the
@@ -12,7 +12,10 @@ import { toPeriod } from "../utils";
  *
  * Every period here is written out rather than derived from today, because a
  * report is a statement about particular months and a test whose window slides
- * with the calendar cannot say which months it meant.
+ * with the calendar cannot say which months it meant. The two exceptions are the
+ * custom window's coverage pair, where what is under test *is* the line between
+ * months that have happened and months that have not — a fact about now, which a
+ * fixed date cannot express.
  */
 const wrapper = ({ children }) => <AppProviders>{children}</AppProviders>;
 
@@ -61,8 +64,8 @@ const ledger = (kind) => (date, amountCents, budgetId = null) => ({
 const out = ledger(TRANSACTION_KINDS.OUTFLOW);
 const inn = ledger(TRANSACTION_KINDS.INFLOW);
 
-const read = (range = "12m", period = END) =>
-  renderHook(() => useSpendingReport(period, range), { wrapper }).result.current;
+const read = (range = "12m", period = END, chosenStart = null) =>
+  renderHook(() => useSpendingReport(period, range, chosenStart), { wrapper }).result.current;
 
 /** The identity's right-hand side, computed straight off the seed: cash that
  *  actually moved in the window, with no notion of income or refunds in it.
@@ -125,6 +128,81 @@ describe("the window", () => {
     const report = read("all");
 
     expect(report.months).toEqual([END]);
+    expect(report.averagedOverMonths).toBe(1);
+  });
+
+  test("a custom window is the two months it names, both ends included", () => {
+    seed({
+      budgets: [budget("b1", "Rent")],
+      transactions: [
+        out("2025-12-01", 100000, "b1"), // the month before the window
+        out("2026-01-04", 70000, "b1"),
+        out("2026-02-09", 30000, "b1"),
+        out("2026-03-01", 900000, "b1"), // the month after it
+      ],
+    });
+
+    const report = read("custom", "2026-02", "2026-01");
+
+    expect(report.months).toEqual(["2026-01", "2026-02"]);
+    expect(report.netSpentCents).toBe(100000);
+    // Named by the months themselves: "Custom" says nothing about which window
+    // it is, and this string is what the summary prints.
+    expect(report.range.name).toBe("January 2026 to February 2026");
+  });
+
+  test("a custom window of one month names itself rather than repeating the month", () => {
+    seed({ budgets: [budget("b1", "Rent")] });
+
+    const report = read("custom", "2026-02", "2026-02");
+
+    expect(report.months).toEqual(["2026-02"]);
+    expect(report.range.name).toBe("February 2026");
+  });
+
+  test("a custom window typed backwards falls back to its end month rather than inverting", () => {
+    seed({ budgets: [budget("b1", "Rent")] });
+
+    // The fields on the page bound each other, so this is the backstop rather
+    // than the path — but an empty month list would divide every per-month
+    // figure by nothing.
+    expect(read("custom", "2026-02", "2026-06").months).toEqual(["2026-02"]);
+  });
+
+  test("months that have not happened are in the window and out of the divisor", () => {
+    // The one window in this file that has to be relative to the clock: what is
+    // under test *is* the boundary between months that have happened and months
+    // that have not, which a fixed date cannot express.
+    const now = currentPeriod();
+    seed({
+      budgets: [budget("b1", "Rent")],
+      transactions: [out(`${now}-02`, 30000, "b1")],
+    });
+
+    const report = read("custom", addMonths(now, 2), now);
+
+    expect(report.months).toHaveLength(3);
+    // Three columns drawn, one month of books. Dividing the $300 by three would
+    // report $100 a month on a household that has spent $300 this month, and a
+    // report nobody can check against a bank statement is worse than no report.
+    expect(report.averagedOverMonths).toBe(1);
+    expect(report.coveredMonths).toBe(1);
+    expect(report.coverageStartPeriod).toBe(now);
+    expect(report.coverageEndPeriod).toBe(now);
+    expect(report.averageSpendCents).toBe(30000);
+  });
+
+  test("a window made entirely of months to come covers nothing, and says so as zero", () => {
+    const ahead = addMonths(currentPeriod(), 3);
+    seed({ budgets: [budget("b1", "Rent")] });
+
+    const report = read("custom", addMonths(ahead, 1), ahead);
+
+    expect(report.months).toHaveLength(2);
+    // Zero is the honest count and the divisor still cannot be it — the page
+    // reads the two apart, printing "none of these months has happened yet"
+    // rather than a division nobody performed.
+    expect(report.coveredMonths).toBe(0);
     expect(report.averagedOverMonths).toBe(1);
   });
 
@@ -364,6 +442,154 @@ describe("the category ranking", () => {
     );
     // Savings had nothing in it, so it is not a segment of nothing.
     expect(report.buckets.map((entry) => entry.label)).not.toContain("Savings");
+  });
+});
+
+describe("the plan, drawn against the books", () => {
+  const groups = [
+    { id: "g1", name: "Bills", bucket: "essentials" },
+    { id: "g2", name: "Treats", bucket: "fun" },
+  ];
+
+  test("every month carries the same fixed list of buckets, including the empty ones", () => {
+    // A stacked column colours a segment by its position, so a list that
+    // dropped its empty entries would hand the same index to different buckets
+    // in different months.
+    seed({
+      groups,
+      budgets: [budget("b1", "Rent", "g1"), budget("b2", "Dining", "g2")],
+      transactions: [out("2026-08-01", 150000, "b1"), out("2026-07-02", 50000, "b2")],
+    });
+
+    const report = read("3m");
+    const keys = ["essentials", "fun", "savings", "retirement", "unfiled"];
+
+    for (const month of report.series) {
+      expect(month.buckets.map((entry) => entry.key)).toEqual(keys);
+    }
+
+    const [june, july, august] = report.series;
+    expect(june.buckets.map((entry) => entry.netSpentCents)).toEqual([0, 0, 0, 0, 0]);
+    expect(july.buckets[1].netSpentCents).toBe(50000);
+    expect(august.buckets[0].netSpentCents).toBe(150000);
+  });
+
+  test("a month's buckets add up to that month's spending, which is what the column is drawn as", () => {
+    seed({
+      groups,
+      budgets: [budget("b1", "Rent", "g1"), budget("b2", "Dining", "g2")],
+      transactions: [
+        out("2026-08-01", 150000, "b1"),
+        out("2026-08-02", 50000, "b2"),
+        out("2026-08-03", 10000, null),
+      ],
+    });
+
+    const august = read("3m").series.at(-1);
+
+    expect(august.buckets.reduce((sum, entry) => sum + entry.netSpentCents, 0)).toBe(
+      august.netSpentCents
+    );
+  });
+
+  test("a refund comes back off the bucket it was filed under, not off another one", () => {
+    seed({
+      groups,
+      budgets: [budget("b1", "Rent", "g1"), budget("b2", "Dining", "g2")],
+      transactions: [
+        out("2026-08-01", 150000, "b1"),
+        out("2026-08-02", 50000, "b2"),
+        inn("2026-08-03", 20000, "b2"),
+      ],
+    });
+
+    const august = read("3m").series.at(-1);
+
+    expect(august.buckets[0].netSpentCents).toBe(150000);
+    expect(august.buckets[1].netSpentCents).toBe(30000);
+  });
+
+  test("a bucket refunded more than it spent is negative, not clamped to zero", () => {
+    // The household genuinely got money back out of it, and the chart draws a
+    // figure on the side its own sign puts it.
+    seed({
+      groups,
+      budgets: [budget("b1", "Rent", "g1"), budget("b2", "Dining", "g2")],
+      transactions: [out("2026-08-01", 150000, "b1"), inn("2026-08-02", 20000, "b2")],
+    });
+
+    const august = read("3m").series.at(-1);
+
+    expect(august.buckets[1].netSpentCents).toBe(-20000);
+    expect(august.netSpentCents).toBe(130000);
+  });
+
+  test("the plan is every category's estimate, including the ones that spent nothing", () => {
+    // An estimate for a category that was quiet all year is still part of what
+    // the plan set aside; dropping it would make the plan appear to shrink in
+    // exactly the months the household underspent.
+    seed({
+      groups,
+      budgets: [
+        budget("b1", "Rent", "g1", 150000),
+        budget("b2", "Dining", "g2", 40000),
+        budget("b3", "Vet", "g1", 10000),
+      ],
+      transactions: [out("2026-08-01", 150000, "b1")],
+    });
+
+    const report = read("3m");
+
+    expect(report.plannedCents).toBe(200000);
+    // Standing, so the same figure answers for every month in the window —
+    // which is what makes it a threshold rather than a second series.
+    for (const month of report.series) expect(month.plannedCents).toBe(200000);
+  });
+
+  test("the window's plan is the standing figure times the months the books cover", () => {
+    // Not times the months asked for: a twelve-month window over three months
+    // of records would otherwise be held against a year of plan. Same divisor
+    // the per-month average uses.
+    seed({
+      groups,
+      budgets: [budget("b1", "Rent", "g1", 100000)],
+      transactions: [out("2026-07-01", 90000, "b1"), out("2026-08-01", 95000, "b1")],
+    });
+
+    const report = read("12m");
+
+    expect(report.averagedOverMonths).toBe(2);
+    expect(report.plannedWindowCents).toBe(200000);
+  });
+
+  test("a bucket carries what the plan sets aside for it, and the unfiled segment carries none", () => {
+    seed({
+      groups,
+      budgets: [budget("b1", "Rent", "g1", 150000), budget("b2", "Dining", "g2", 40000)],
+      transactions: [out("2026-08-01", 150000, "b1"), out("2026-08-02", 10000, null)],
+    });
+
+    const report = read("3m");
+    const byLabel = new Map(report.buckets.map((entry) => [entry.label, entry]));
+
+    expect(byLabel.get("Essentials").plannedCents).toBe(150000);
+    // Nothing was spent on Fun, so it is not a segment — but the estimate
+    // against it is still in the plan's total above.
+    expect(byLabel.has("Fun")).toBe(false);
+    expect(report.plannedCents).toBe(190000);
+    // Null rather than zero: there is no estimate for "no category", and a zero
+    // would read as a plan to spend nothing on it.
+    expect(byLabel.get("No category").plannedCents).toBeNull();
+  });
+
+  test("no estimates anywhere is a plan of zero, which the chart reads as no plan at all", () => {
+    seed({
+      groups,
+      budgets: [budget("b1", "Rent", "g1")],
+      transactions: [out("2026-08-01", 150000, "b1")],
+    });
+
+    expect(read("3m").plannedCents).toBe(0);
   });
 });
 

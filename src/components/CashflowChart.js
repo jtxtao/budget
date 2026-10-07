@@ -3,10 +3,17 @@ import {
   axisLabels,
   axisTicks,
   barWidthFor,
+  lineRuns,
   radiusFor,
   stackPaths,
 } from "../chartAxis";
-import { formatCents, formatCompactCents, formatPeriod, formatPeriodShort } from "../utils";
+import {
+  formatCents,
+  formatCompactCents,
+  formatPeriod,
+  formatPeriodShort,
+  periodLTE,
+} from "../utils";
 
 /**
  * What came in and what went out, month by month, with what was left traced
@@ -185,7 +192,11 @@ function Readout({ entry }) {
   );
 }
 
-export default function CashflowChart({ series }) {
+export default function CashflowChart({
+  series,
+  coverageStartPeriod = null,
+  coverageEndPeriod = null,
+}) {
   // Which column the pointer or the keyboard is on. Null is a real state, not a
   // missing one — it means the chart is being looked at rather than interrogated.
   const [active, setActive] = useState(null);
@@ -199,8 +210,28 @@ export default function CashflowChart({ series }) {
   const centreOf = (index) => PLOT.left + slot * (index + 0.5);
 
   const baseline = y(0);
-  const netPoints = series.map((entry, index) => `${centreOf(index)},${y(entry.netCents)}`);
   const lastIndex = series.length - 1;
+
+  // **The line spans the months the books cover and no further.** A column is a
+  // sum and is honest at zero either way; a *line* through those months is a
+  // claim, and "the household broke even" is the wrong one — before the first
+  // record nobody was writing anything down, and past this month nothing has
+  // happened yet. `lineRuns` breaks across a null rather than spanning it, the
+  // same refusal `CategoryHistoryChart`'s trend makes and `PlanVsActualChart`
+  // makes with its verdicts. With no coverage stated every month counts, which
+  // is what the suites that take this chart's props alone rely on.
+  const covered = (period) =>
+    (coverageStartPeriod == null || periodLTE(coverageStartPeriod, period)) &&
+    (coverageEndPeriod == null || periodLTE(period, coverageEndPeriod));
+  const netValues = series.map((entry) => (covered(entry.period) ? entry.netCents : null));
+  const netRuns = lineRuns(netValues, { x: centreOf, y });
+  // The end dot and its label belong at the last month the line actually
+  // reaches, not at the last column: a label floating past the end of a broken
+  // line would be the figure the reader's eye lands on, naming a month the line
+  // declined to describe.
+  let endIndex = lastIndex;
+  while (endIndex > 0 && netValues[endIndex] == null) endIndex -= 1;
+  const hasEnd = netValues[endIndex] != null;
   const labels = axisLabels(series.map((entry) => entry.period));
 
   // A shorter window can leave the active index past the end of the new series,
@@ -326,35 +357,42 @@ export default function CashflowChart({ series }) {
               />
             )}
 
-            <polyline
-              points={netPoints.join(" ")}
-              fill="none"
-              className="stroke-chalk"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+            {netRuns.map((points) => (
+              <polyline
+                key={points}
+                points={points}
+                fill="none"
+                className="stroke-chalk"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ))}
 
-            {/* The end dot wears a ring in the surface colour so it stays
-                legible where it crosses a column. */}
-            <circle
-              cx={centreOf(lastIndex)}
-              cy={y(series[lastIndex].netCents)}
-              r={4}
-              className="fill-chalk stroke-panel"
-              strokeWidth={2}
-            />
+            {hasEnd && (
+              <>
+                {/* The end dot wears a ring in the surface colour so it stays
+                    legible where it crosses a column. */}
+                <circle
+                  cx={centreOf(endIndex)}
+                  cy={y(series[endIndex].netCents)}
+                  r={4}
+                  className="fill-chalk stroke-panel"
+                  strokeWidth={2}
+                />
 
-            {/* The one direct label on the chart. Labelling every point would be
-                chaos; labelling the end is what the reader came for. */}
-            <text
-              x={centreOf(lastIndex) + barWidth / 2 + 8}
-              y={y(series[lastIndex].netCents)}
-              dominantBaseline="middle"
-              className="fill-chalk font-mono text-label font-medium tracking-normal tabular-nums"
-            >
-              {formatCompactCents(series[lastIndex].netCents)}
-            </text>
+                {/* The one direct label on the chart. Labelling every point would
+                    be chaos; labelling the end is what the reader came for. */}
+                <text
+                  x={centreOf(endIndex) + barWidth / 2 + 8}
+                  y={y(series[endIndex].netCents)}
+                  dominantBaseline="middle"
+                  className="fill-chalk font-mono text-label font-medium tracking-normal tabular-nums"
+                >
+                  {formatCompactCents(series[endIndex].netCents)}
+                </text>
+              </>
+            )}
 
             {labels.map((label) => (
               <text

@@ -3,6 +3,7 @@ import { getSupabase, isSupabaseConfigured } from "../supabaseClient";
 import {
   clearScope,
   hasStoredBooks,
+  isDesktop,
   isGuestMode,
   localScope,
   replaceScope,
@@ -13,7 +14,15 @@ import { booksFilename, offerFile, serializeBooks } from "../booksFile";
 import { flushWrites } from "../desktop";
 
 /**
- * Who is signed in, and the four things they can do about it.
+ * Who is signed in, and what they can do about it.
+ *
+ * **There are two ways in, and the second is not a convenience.** A password is
+ * the original route. An emailed link — or, in the desktop shell, an emailed
+ * code — is the other, and it is here because these accounts are shared with
+ * another app that signs people in by link and through Google, both of which
+ * leave `encrypted_password` null. Such a person has a real account here that
+ * `signInWithPassword` structurally cannot let them use. See
+ * `requestSignInEmail`.
  *
  * The app was single-user with no auth for its whole life, and the reason that
  * had to end is not that a second person appeared — it is that the books moved
@@ -60,6 +69,16 @@ export const AUTH_STATUS = {
 export const MIN_PASSWORD_LENGTH = 8;
 
 /**
+ * How many digits are in an emailed sign-in code.
+ *
+ * Six is what a Supabase project sends by default and the figure the copy
+ * states. The *check* below accepts more than that, because the length is a
+ * project setting rather than a protocol constant — this number is what the
+ * page says, not what the validator insists on.
+ */
+export const MAGIC_CODE_LENGTH = 6;
+
+/**
  * A Supabase error, as a sentence for a person.
  *
  * The strings the API returns are written for a developer reading a log —
@@ -86,6 +105,18 @@ export function describeAuthError(error) {
   }
   if (lower.includes("email not confirmed")) {
     return "Confirm your email address first — the link is in your inbox.";
+  }
+  // One sentence for every way an emailed credential can fail, because a person
+  // cannot act on the difference: a code typed after it lapsed, a code
+  // mistyped, and a link followed twice all arrive here, and every one of them
+  // is fixed by asking for another.
+  if (
+    lower.includes("token has expired") ||
+    lower.includes("invalid token") ||
+    lower.includes("otp_expired") ||
+    lower.includes("token not found")
+  ) {
+    return "That code has expired or does not match. Ask for a new one.";
   }
   if (lower.includes("password should be at least")) {
     return `Use a password of at least ${MIN_PASSWORD_LENGTH} characters.`;
@@ -143,6 +174,44 @@ function checkEmail(email) {
   return null;
 }
 
+/**
+ * A typed sign-in code, as far as this side can tell.
+ *
+ * Spaces come out first because the code arrives in an email and is pasted, and
+ * a copy that picks up a trailing space is not a mistake worth a round trip to
+ * report. Six to ten digits rather than exactly `MAGIC_CODE_LENGTH`: the length
+ * is a project setting, so insisting on today's value here would turn raising
+ * it in the dashboard into a form that refuses every real code. The server is
+ * the one that knows — this only catches what obviously is not a code at all.
+ */
+function checkCode(code) {
+  const digits = (code ?? "").replace(/\s/g, "");
+  if (!digits) return `Enter the ${MAGIC_CODE_LENGTH}-digit code from the email.`;
+  if (!/^\d{6,10}$/.test(digits)) return "A sign-in code is digits only.";
+  return null;
+}
+
+/**
+ * Whether a refused sign-in email means "no such account".
+ *
+ * Asked so the answer can be **thrown away**. With `shouldCreateUser: false` a
+ * request for an address nobody has registered comes back as `otp_disabled`,
+ * and reporting that would turn this form into a way to test whether a given
+ * person keeps their books here — the same leak the reset form is worded around.
+ * So the caller reports success either way and the page says "if an account
+ * exists", which is true in both cases and distinguishable in neither.
+ */
+function isUnknownAccountError(error) {
+  if (!error) return false;
+  const code = String(error.code ?? "");
+  const lower = String(error.message ?? error).toLowerCase();
+  return (
+    code === "otp_disabled" ||
+    lower.includes("signups not allowed for otp") ||
+    lower.includes("signups not allowed")
+  );
+}
+
 export const AuthProvider = ({ children }) => {
   // Read synchronously, so a returning guest is never shown the sign-in form
   // they already declined — the same reason CHECKING exists for a session.
@@ -169,6 +238,17 @@ export const AuthProvider = ({ children }) => {
    * navigation between its modes.
    */
   const [pendingConfirmation, setPendingConfirmation] = useState(null);
+
+  /**
+   * The address a sign-in email was just sent to, or null.
+   *
+   * Held here beside `pendingConfirmation` for the same reason — it survives the
+   * form's own mode switching — but it is doing more work than that one. In the
+   * desktop shell it is the only thing that knows which address the code about
+   * to be typed belongs to, and `verifyOtp` needs the address as well as the
+   * code. So it is not merely a flag for the page: it is half of the credential.
+   */
+  const [pendingSignInEmail, setPendingSignInEmail] = useState(null);
 
   /**
    * True while this browser is running on its own books by choice.
@@ -224,6 +304,13 @@ export const AuthProvider = ({ children }) => {
 
       if (event === "PASSWORD_RECOVERY") setRecovering(true);
       if (event === "SIGNED_OUT") setRecovering(false);
+
+      // Cleared the moment a session exists, not when the form is left. This
+      // provider outlives `AuthPage` — the page unmounts as soon as there is a
+      // session and mounts again on the next sign-out — so a pending address
+      // left lying here would greet the next sign-out with "check your inbox"
+      // for an email sent before the session that has just ended.
+      if (session) setPendingSignInEmail(null);
 
       setUser(session?.user ?? null);
       setStatus(session ? AUTH_STATUS.SIGNED_IN : signedOutStatus());
@@ -290,6 +377,107 @@ export const AuthProvider = ({ children }) => {
     setPendingConfirmation(null);
     return { ok: true };
   }, []);
+
+  /**
+   * Sign in by email, with no password involved.
+   *
+   * **This exists because the account is no longer this app's alone.** The
+   * project behind it also serves another app, which signs people in by link,
+   * by code and through Google and GitHub — and every one of those routes
+   * creates a row in `auth.users` with `encrypted_password` **null**. Such a
+   * person has a perfectly good account here and, before this, no way to reach
+   * it: `signInWithPassword` answers "invalid login credentials", which the
+   * sign-in form words as a password that does not match, when the truth is
+   * that there is no password to match. Password recovery was the only way
+   * through, which is a strange thing to ask of somebody who never had one.
+   *
+   * **One call, two shapes of email, because the two builds cannot use the same
+   * one.** The browser gets `emailRedirectTo` and follows the link back to its
+   * own origin. The shell is served over `app://`, which no mail client and no
+   * OS browser can open, so it sends **no** redirect and reads the six-digit
+   * token out of the same email instead — the one place the two builds are
+   * offered genuinely different mechanics rather than different wording. Both
+   * halves are rendered by the project's single Magic Link template, which is
+   * why that template has to carry `{{ .Token }}` as well as
+   * `{{ .ConfirmationURL }}`.
+   *
+   * **`shouldCreateUser` is false, and that is the load-bearing choice here.**
+   * Left at its default this would quietly become a second way to register —
+   * one that mints exactly the passwordless account this function was written
+   * to rescue, and does it for a typo'd address as readily as a real one. An
+   * account is created by the sign-up form, which asks for a password and
+   * confirms it. This reaches accounts that already exist.
+   *
+   * Which means an unknown address is refused, and reporting that refusal would
+   * leak whether a given person banks here — so it is swallowed and reported as
+   * success, with the page wording the ambiguity out loud. See
+   * `isUnknownAccountError`.
+   */
+  const requestSignInEmail = useCallback(async ({ email }) => {
+    const supabase = getSupabase();
+    if (!supabase) return { ok: false, error: "This build has no account server configured." };
+
+    const emailError = checkEmail(email);
+    if (emailError) return { ok: false, error: emailError };
+
+    const address = email.trim();
+    const { error } = await supabase.auth.signInWithOtp({
+      email: address,
+      options: {
+        shouldCreateUser: false,
+        // Omitted in the shell rather than set to the `app://` origin. An
+        // un-allow-listed redirect does not fail the request, it falls back to
+        // the project's Site URL — and that URL now belongs to whichever of the
+        // two apps claimed it, so asking for one we cannot receive risks
+        // sending a household into the *other* app. Saying nothing is the
+        // honest version of "the link is not the part you want".
+        ...(isDesktop() ? null : { emailRedirectTo: window.location.origin }),
+      },
+    });
+
+    if (error && !isUnknownAccountError(error)) {
+      return { ok: false, error: describeAuthError(error) };
+    }
+
+    setPendingSignInEmail(address);
+    return { ok: true };
+  }, []);
+
+  /**
+   * Finish the emailed sign-in with the code from the email.
+   *
+   * The shell's half of the pair. The address comes from `pendingSignInEmail`
+   * rather than from an argument: `verifyOtp` needs both halves and only one of
+   * them was typed, so taking the address from anywhere else would let the form
+   * verify a code against an address the code was never sent to.
+   *
+   * On success nothing is set here — `verifyOtp` establishes a session, the auth
+   * listener sees `SIGNED_IN`, and the whole page unmounts behind it. That is
+   * also why the pending address is cleared only on the way *out* of the flow.
+   */
+  const verifySignInCode = useCallback(
+    async ({ code }) => {
+      const supabase = getSupabase();
+      if (!supabase) return { ok: false, error: "This build has no account server configured." };
+      if (!pendingSignInEmail) return { ok: false, error: "Ask for a new code to sign in." };
+
+      const codeError = checkCode(code);
+      if (codeError) return { ok: false, error: codeError };
+
+      const { error } = await supabase.auth.verifyOtp({
+        email: pendingSignInEmail,
+        token: (code ?? "").replace(/\s/g, ""),
+        // "email" rather than "magiclink": both are emailed by the same
+        // template, but the token in it is an email OTP and verifying it under
+        // the link's type is refused.
+        type: "email",
+      });
+      if (error) return { ok: false, error: describeAuthError(error) };
+
+      return { ok: true };
+    },
+    [pendingSignInEmail]
+  );
 
   /**
    * End the session, and take the books out of this browser with it.
@@ -450,6 +638,9 @@ export const AuthProvider = ({ children }) => {
 
   const dismissConfirmation = useCallback(() => setPendingConfirmation(null), []);
 
+  /** Abandon an emailed sign-in and go back to the form. */
+  const dismissSignInEmail = useCallback(() => setPendingSignInEmail(null), []);
+
   const value = useMemo(
     () => ({
       status,
@@ -459,6 +650,8 @@ export const AuthProvider = ({ children }) => {
       recovering,
       pendingConfirmation,
       dismissConfirmation,
+      pendingSignInEmail,
+      dismissSignInEmail,
       signUp,
       signIn,
       signOut,
@@ -466,6 +659,8 @@ export const AuthProvider = ({ children }) => {
       leaveLocalMode,
       stopSyncing,
       requestPasswordReset,
+      requestSignInEmail,
+      verifySignInCode,
       updatePassword,
     }),
     [
@@ -474,6 +669,8 @@ export const AuthProvider = ({ children }) => {
       recovering,
       pendingConfirmation,
       dismissConfirmation,
+      pendingSignInEmail,
+      dismissSignInEmail,
       signUp,
       signIn,
       signOut,
@@ -481,6 +678,8 @@ export const AuthProvider = ({ children }) => {
       leaveLocalMode,
       stopSyncing,
       requestPasswordReset,
+      requestSignInEmail,
+      verifySignInCode,
       updatePassword,
     ]
   );

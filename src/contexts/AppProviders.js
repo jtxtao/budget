@@ -10,6 +10,7 @@ import { RetirementProvider } from "./RetirementContext";
 import { SavingsGoalsProvider } from "./SavingsGoalsContext";
 import { SavingsGoalAssignmentsProvider } from "./SavingsGoalAssignmentsContext";
 import { SchedulesProvider } from "./SchedulesContext";
+import { EmergencyFundProvider } from "./EmergencyFundContext";
 
 // Composes every store in one place so index.js and the tests wrap the app the
 // same way, and adding a store does not mean editing both.
@@ -67,6 +68,15 @@ import { SchedulesProvider } from "./SchedulesContext";
 // a real transaction is a page's write, not a store's: see the dashboard's
 // upcoming panel.
 //
+// EmergencyFund is independent in both directions, like Schedules: it holds the
+// shape of one question — how many months of essentials to cover, or which figure
+// instead, and which accounts hold the money — and names its accounts by id
+// without ever reading them back. A reference to a deleted account is inert but
+// kept, so nothing cascades either way and its position here is free. The target
+// itself is nobody's record: src/hooks/useEmergencyFund.js joins the plan's
+// essentials to what those accounts are worth, which is the cross-store read no
+// provider may make.
+//
 // SavingsGoals is independent of every other store: a goal names no category,
 // no account, and no transaction, so nothing outside this pair deletes into or
 // out of it. SavingsGoalAssignments is the money-actually-put-in half of a
@@ -88,7 +98,9 @@ export default function AppProviders({ children }) {
                     <RetirementProvider>
                       <SavingsGoalAssignmentsProvider>
                         <SavingsGoalsProvider>
-                          <SchedulesProvider>{children}</SchedulesProvider>
+                          <SchedulesProvider>
+                            <EmergencyFundProvider>{children}</EmergencyFundProvider>
+                          </SchedulesProvider>
                         </SavingsGoalsProvider>
                       </SavingsGoalAssignmentsProvider>
                     </RetirementProvider>

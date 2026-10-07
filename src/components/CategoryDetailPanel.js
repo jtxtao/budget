@@ -76,7 +76,15 @@ function TransactionRow({ transaction, accounts, payeeById, striped }) {
   );
 }
 
-export default function CategoryDetailPanel({ row, months, accounts, payeeById, onClose }) {
+export default function CategoryDetailPanel({
+  row,
+  months,
+  coverageStartPeriod = null,
+  coverageEndPeriod = null,
+  accounts,
+  payeeById,
+  onClose,
+}) {
   return (
     <section className="border border-azure/60 bg-panel">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-edge px-4 py-3">
@@ -95,7 +103,15 @@ export default function CategoryDetailPanel({ row, months, accounts, payeeById, 
         </Button>
       </div>
 
-      <CategoryHistoryChart monthly={row.monthly} />
+      {/* The chart is told where the books begin so the trend can start there
+          rather than climbing out of months that are empty because nobody was
+          recording yet — which would read as a habit growing when all that grew
+          is the record of it. */}
+      <CategoryHistoryChart
+        monthly={row.monthly}
+        coverageStartPeriod={coverageStartPeriod}
+        coverageEndPeriod={coverageEndPeriod}
+      />
 
       {row.transactions.length === 0 ? (
         <p className="border-t border-edge px-4 py-5 font-sans text-row text-chalk-soft">

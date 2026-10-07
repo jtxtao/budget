@@ -28,12 +28,16 @@ const SECTIONS = [
   { band: HOLDING_CLASSES.DEBT, label: "Owed", swatch: "bg-vermilion" },
 ];
 
-function HoldingRow({ row, period, striped }) {
+function HoldingRow({ row, period, striped, onFixDrift }) {
   // Shared with the update form rather than written twice: the two screens are
   // read against each other, and a figure called current in one and carried
   // forward in the other is worse than either description alone.
   const { text, stale } = describeSource(row, period);
   const owed = row.account.type === ACCOUNT_TYPES.LIABILITY;
+  // The one row that has something to do: a statement and a ledger figure for
+  // the same month that do not agree.
+  const settleable = onFixDrift && row.driftCents != null && row.driftCents !== 0;
+  const tone = stale ? "text-vermilion-ink" : "text-ink-soft";
 
   return (
     <tr className={striped ? "bg-sheet-alt" : "bg-sheet"}>
@@ -46,24 +50,39 @@ function HoldingRow({ row, period, striped }) {
             the page. */}
         {formatCents(owed ? -row.valueCents : row.valueCents)}
       </td>
-      <td
-        className={`whitespace-nowrap px-3 py-2 text-right font-mono text-label uppercase ${
-          stale ? "text-vermilion-ink" : "text-ink-soft"
-        }`}
-      >
-        {text}
+      <td className={`whitespace-nowrap text-right font-mono text-label uppercase ${tone}`}>
+        {settleable ? (
+          <button
+            type="button"
+            onClick={() => onFixDrift(row)}
+            aria-label={`Settle the ${formatCents(
+              Math.abs(row.driftCents)
+            )} difference on ${row.account.name}`}
+            className="w-full border-b-2 border-transparent px-3 py-2 text-right uppercase underline decoration-dotted underline-offset-4 transition-colors hover:border-rule hover:decoration-solid"
+          >
+            {text}
+          </button>
+        ) : (
+          <span className="block px-3 py-2">{text}</span>
+        )}
       </td>
     </tr>
   );
 }
 
 /**
- * Read-only, deliberately. The one action this table could carry — update the
- * month's figures — already sits in the page header, and a second button with
- * the same label further down the same screen makes a reader stop and work out
- * whether the two do the same thing.
+ * Read-only but for one thing, and that one thing is the column's own subject.
+ *
+ * Updating the month's figures is not offered here: it already sits in the page
+ * header, and a second button with the same label further down the same screen
+ * makes a reader stop and work out whether the two do the same thing. What *is*
+ * offered is settling a disagreement this table is the only place to see — where
+ * the Source cell reads "Entered · $20 vs ledger", that cell is the way to deal
+ * with the $20. Noticing the gap and closing it are one thought, so they are one
+ * click, and it is the cell that states the gap rather than a new column, which
+ * would widen every row to carry a control almost none of them can use.
  */
-export default function HoldingsTable({ rows, period }) {
+export default function HoldingsTable({ rows, period, onFixDrift }) {
   let stripe = 0;
 
   const sections = SECTIONS.map((section) => ({
@@ -131,6 +150,7 @@ export default function HoldingsTable({ rows, period }) {
                       row={row}
                       period={period}
                       striped={stripe++ % 2 === 1}
+                      onFixDrift={onFixDrift}
                     />
                   ))}
                 </tbody>

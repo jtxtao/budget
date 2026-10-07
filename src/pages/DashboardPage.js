@@ -2,6 +2,7 @@ import { useState } from "react";
 import CategoryLedgerTable from "../components/CategoryLedgerTable";
 import DashboardSummary from "../components/DashboardSummary";
 import EnterScheduledModal from "../components/EnterScheduledModal";
+import MoveMoneyModal from "../components/MoveMoneyModal";
 import PageHeader from "../components/PageHeader";
 import ReconciliationList from "../components/ReconciliationList";
 import UpcomingBills from "../components/UpcomingBills";
@@ -55,6 +56,11 @@ export default function DashboardPage() {
   // needs both the schedule and the date it is about.
   const [entering, setEntering] = useState(null);
   const [scheduleError, setScheduleError] = useState(null);
+  // The seed the move modal opens on, and the thing that says it is open at
+  // all. Held in state rather than rebuilt per render because the modal stays
+  // mounted and re-seeds off this object — a fresh literal every render would
+  // reset the form under the user mid-type.
+  const [moving, setMoving] = useState(null);
 
   // What there was to spend: money assigned in an earlier month and carried in
   // is just as spendable as money assigned this month, and so is money refunded
@@ -157,6 +163,28 @@ export default function DashboardPage() {
    * touches no money at all, which is the one thing a bill reminder has to be able
    * to do without lying about the books.
    */
+  /**
+   * Open the move on a category, with the direction read off its own figure.
+   *
+   * A row in the red is one somebody wants to *cover*, so it seeds as the
+   * destination with the shortfall already typed in — the figure they were
+   * looking at when they clicked. Any other row is one with money to spare, so
+   * it seeds as the source. Stated on each button's label, so the rule is read
+   * before the click rather than discovered after it. `null` is the header
+   * button: no direction assumed, both selects empty.
+   */
+  function handleMove(row) {
+    if (row == null) {
+      setMoving({});
+      return;
+    }
+    setMoving(
+      row.availableCents < 0
+        ? { toBudgetId: row.budgetId, amountCents: -row.availableCents }
+        : { fromBudgetId: row.budgetId }
+    );
+  }
+
   function handleSkip(row) {
     const result = advanceSchedule({ id: row.schedule.id, through: row.date });
     setScheduleError(result.ok ? null : result.error);
@@ -207,6 +235,7 @@ export default function DashboardPage() {
             otherRows={dashboard.otherRows}
             otherTotals={dashboard.otherTotals}
             totals={dashboard.totals}
+            onMove={handleMove}
           />
         </div>
         {/* Upcoming above the accounts in the narrow column: it is the one panel
@@ -239,6 +268,13 @@ export default function DashboardPage() {
           follow the ledger — reconciling records that they agreed with the bank today.
         </p>
       )}
+
+      <MoveMoneyModal
+        show={moving != null}
+        period={period}
+        seed={moving}
+        handleClose={() => setMoving(null)}
+      />
 
       <EnterScheduledModal
         show={entering != null}

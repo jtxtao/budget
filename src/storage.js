@@ -74,6 +74,7 @@ export const STORE_KEYS = [
   "savingsGoals",
   "savingsGoalAssignments",
   "schedules",
+  "emergencyFund",
 ];
 
 /**
