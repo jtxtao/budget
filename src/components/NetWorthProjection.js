@@ -1,12 +1,12 @@
+import NetWorthByAgeChart from "./NetWorthByAgeChart";
 import { formatCents } from "../utils";
 
 /**
  * The whole balance sheet, walked forward to the end of the plan.
  *
- * A table for now, with its headline figures above it — the stacked chart over
- * age comes with life events, which are what will give it markers worth
- * drawing. Until then the table is the record: every pot, every age, and the
- * net worth they add up to, in today's dollars.
+ * Headline figures, the stacked chart over age (`NetWorthByAgeChart`), and the
+ * chart's table twin beneath it: every pot, every age, the net worth they add
+ * up to and the events each year holds, in today's dollars.
  *
  * What it says out loud is what a household would otherwise discover too late:
  * the age a year first cannot be paid for, the age the retirement accounts are
@@ -64,6 +64,10 @@ export default function NetWorthProjection({ projection, retirementAge, lifeExpe
           {projection.shortfallAge == null ? "None" : `Age ${projection.shortfallAge}`}
         </Figure>
       </dl>
+
+      <div className="border-b border-edge">
+        <NetWorthByAgeChart series={projection.series} retirementAge={retirementAge} />
+      </div>
 
       {notes.length > 0 && (
         <ul className="space-y-1 border-b border-edge px-4 py-3">

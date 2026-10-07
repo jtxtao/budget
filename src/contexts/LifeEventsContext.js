@@ -2,7 +2,7 @@ import React, { useCallback, useContext, useMemo } from "react";
 import { v4 as uuidV4 } from "uuid";
 import useSyncedState from "../hooks/useSyncedState";
 import { LIFE_EVENT_KINDS } from "../netWorthProjection";
-import { MAX_AGE, MIN_AGE } from "./RetirementContext";
+import { MAX_AGE, MAX_RATE_BPS, MIN_AGE } from "./RetirementContext";
 import { toBps, toCents } from "../utils";
 
 /**
@@ -15,12 +15,22 @@ import { toBps, toCents } from "../utils";
  * books hold, so nothing here is read by an envelope, a balance or a report.
  * `src/netWorthProjection.js` is the only reader.
  *
- * **Three kinds, and the direction lives in the kind**, never in a sign — the
+ * **Five kinds, and the direction lives in the kind**, never in a sign — the
  * ledger's rule. An expense and an income each carry a one-time figure, a yearly
  * figure, or both, as non-negative magnitudes; an income change carries the
  * share of normal pay that is kept (0 for a sabbatical, 50% for going
  * part-time). Fields a kind does not read are **kept, not cleared**, the
  * switched-away-from rule, so changing a draft's kind and back loses nothing.
+ *
+ * **Buying and selling a home** carry their own fields: a purchase states a
+ * price, a down payment, the mortgage's nominal rate and term, the rent it ends
+ * (`rentSavedCents`, a year of it) and reuses `oneTimeCents` for closing costs
+ * and `annualCents` for what owning costs a year; a sale names the property
+ * (`propertyRef`: an account in the property band, or the id of a purchase
+ * event) and, for one already on the books, the mortgage it pays off
+ * (`debtRef`), with its costs as a share of the price. **Both references are
+ * inert but kept**, the payee-default rule — the projection skips a sale whose
+ * property it cannot find, rather than this store reaching into the accounts.
  *
  * **`years` rather than an end age**: "childcare for five years" is how the
  * question is answered, and an end age would leave whether the last year is
@@ -55,6 +65,9 @@ const isAge = (value) => Number.isInteger(value) && value >= MIN_AGE && value <=
 const isAmount = (value) => value === null || (Number.isInteger(value) && value >= 0);
 const isYears = (value) => value === null || (Number.isInteger(value) && value >= 1 && value <= MAX_AGE);
 const isShare = (value) => Number.isInteger(value) && value >= 0 && value <= MAX_KEPT_SHARE_BPS;
+const isRate = (value) => Number.isInteger(value) && value >= 0 && value <= MAX_RATE_BPS;
+const isTerm = (value) => Number.isInteger(value) && value >= 1 && value <= 50;
+const isRef = (value) => value === null || typeof value === "string";
 const isBlank = (value) => value === null || value === undefined || String(value).trim() === "";
 
 /** Field-presence on every field, so a record from an older build keeps
@@ -78,6 +91,16 @@ function migrateEvents(stored) {
       oneTimeCents: "oneTimeCents" in event && isAmount(event.oneTimeCents) ? event.oneTimeCents : null,
       annualCents: "annualCents" in event && isAmount(event.annualCents) ? event.annualCents : null,
       keptShareBps: "keptShareBps" in event && isShare(event.keptShareBps) ? event.keptShareBps : 0,
+      priceCents: "priceCents" in event && isAmount(event.priceCents) ? event.priceCents : null,
+      downPaymentCents:
+        "downPaymentCents" in event && isAmount(event.downPaymentCents) ? event.downPaymentCents : null,
+      rateBps: "rateBps" in event && isRate(event.rateBps) ? event.rateBps : 0,
+      termYears: "termYears" in event && isTerm(event.termYears) ? event.termYears : 30,
+      rentSavedCents:
+        "rentSavedCents" in event && isAmount(event.rentSavedCents) ? event.rentSavedCents : null,
+      sellingCostBps: "sellingCostBps" in event && isRate(event.sellingCostBps) ? event.sellingCostBps : 0,
+      propertyRef: "propertyRef" in event && isRef(event.propertyRef) ? event.propertyRef : null,
+      debtRef: "debtRef" in event && isRef(event.debtRef) ? event.debtRef : null,
       enabled: event.enabled !== false,
     }));
 }
@@ -87,7 +110,23 @@ function migrateEvents(stored) {
  * form here sends them; the kind decides which of them are required, and the
  * rest are read if present and kept as they are.
  */
-function readEvent({ name, kind, startAge, years, oneTime, annual, keptShare }) {
+function readEvent({
+  name,
+  kind,
+  startAge,
+  years,
+  oneTime,
+  annual,
+  keptShare,
+  price,
+  downPayment,
+  rate,
+  termYears,
+  rentSaved,
+  sellingCost,
+  propertyRef,
+  debtRef,
+}) {
   const trimmed = typeof name === "string" ? name.trim() : "";
   if (!trimmed) return { error: "Give the event a name." };
   if (!KIND_VALUES.includes(kind)) return { error: "Choose what kind of event this is." };
@@ -119,12 +158,41 @@ function readEvent({ name, kind, startAge, years, oneTime, annual, keptShare }) 
     return { error: "Enter how much of your normal pay you keep — 0 for a year off." };
   }
 
-  if (
-    kind !== LIFE_EVENT_KINDS.INCOME_CHANGE &&
-    !oneTimeRead.cents &&
-    !annualRead.cents
-  ) {
+  const flowKind = kind === LIFE_EVENT_KINDS.EXPENSE || kind === LIFE_EVENT_KINDS.INCOME;
+  if (flowKind && !oneTimeRead.cents && !annualRead.cents) {
     return { error: "Enter a one-time amount, a yearly amount, or both." };
+  }
+
+  const percent = (value, label) => {
+    if (isBlank(value)) return { bps: 0 };
+    const bps = toBps(value);
+    if (bps == null || !isRate(bps)) {
+      return { error: `Enter ${label} as a percentage between 0 and ${MAX_RATE_BPS / 100}.` };
+    }
+    return { bps };
+  };
+
+  const priceRead = money(price, "the price");
+  if (priceRead.error) return priceRead;
+  const downRead = money(downPayment, "the down payment");
+  if (downRead.error) return downRead;
+  const rentRead = money(rentSaved, "the rent it replaces");
+  if (rentRead.error) return rentRead;
+  const rateRead = percent(rate, "the mortgage rate");
+  if (rateRead.error) return rateRead;
+  const sellingRead = percent(sellingCost, "the cost of selling");
+  if (sellingRead.error) return sellingRead;
+  const term = isBlank(termYears) ? 30 : Number(termYears);
+  if (!isTerm(term)) return { error: "Enter the mortgage term as a whole number of years, 1 to 50." };
+
+  if (kind === LIFE_EVENT_KINDS.BUY_PROPERTY) {
+    if (!priceRead.cents) return { error: "Enter what the home costs." };
+    if ((downRead.cents ?? 0) > priceRead.cents) {
+      return { error: "The down payment cannot be more than the price." };
+    }
+  }
+  if (kind === LIFE_EVENT_KINDS.SELL_PROPERTY && isBlank(propertyRef)) {
+    return { error: "Choose which property is sold." };
   }
 
   return {
@@ -136,6 +204,14 @@ function readEvent({ name, kind, startAge, years, oneTime, annual, keptShare }) 
       oneTimeCents: oneTimeRead.cents,
       annualCents: annualRead.cents,
       keptShareBps,
+      priceCents: priceRead.cents,
+      downPaymentCents: downRead.cents,
+      rateBps: rateRead.bps,
+      termYears: term,
+      rentSavedCents: rentRead.cents,
+      sellingCostBps: sellingRead.bps,
+      propertyRef: isBlank(propertyRef) ? null : propertyRef,
+      debtRef: isBlank(debtRef) ? null : debtRef,
     },
   };
 }

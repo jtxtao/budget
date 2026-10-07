@@ -144,7 +144,9 @@ export default function RetirementOutlook({ projection, inputs, retirementAge })
           >
             {formatCents(projectedCents)}
           </div>
-          <div className="mt-1 font-sans text-row text-chalk-soft">on course to have saved</div>
+          <div className="mt-1 font-sans text-row text-chalk-soft">
+            on course to have saved — cash and investments, not the house
+          </div>
         </div>
 
         <dl className="flex flex-wrap gap-x-8 gap-y-2">
@@ -185,7 +187,10 @@ export default function RetirementOutlook({ projection, inputs, retirementAge })
       <dl className="grid gap-px bg-edge sm:grid-cols-2 xl:grid-cols-4">
         <Band label="Yearly spending">{formatCents(inputs.annualSpendingCents)}</Band>
         <Band label="Saving each year">{formatCents(inputs.annualContributionCents)}</Band>
-        <Band label="Starting from">{formatCents(inputs.startingCents)}</Band>
+        {/* Everything spendable today — cash and every investment — since that
+            is what the hero figure above grows from, not the ticked accounts
+            alone. */}
+        <Band label="Saved today">{formatCents(projection.startingCents ?? inputs.startingCents)}</Band>
         <Band
           label="Money lasts to"
           tone={depletionAge == null ? "text-chalk" : "text-vermilion"}

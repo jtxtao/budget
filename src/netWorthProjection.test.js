@@ -2,7 +2,9 @@ import {
   INCOME_SOURCES,
   LIFE_EVENT_KINDS,
   eventsAt,
+  loanPayment,
   projectNetWorth,
+  retirementOutlook,
   takeHomeAt,
 } from "./netWorthProjection";
 import { projectRetirement, requiredNestEgg } from "./hooks/useRetirementProjection";
@@ -438,4 +440,248 @@ describe("life events", () => {
   test("every kind together still balances, year by year", () => {
     expectIdentity(projectNetWorth({ ...plan, events: [wedding, childcare, sabbatical, pension] }));
   });
+});
+
+describe("buying and selling a home", () => {
+  const plan = {
+    currentAge: 30,
+    retirementAge: 65,
+    lifeExpectancy: 90,
+    pots: { cashCents: 120_000_00, investedCents: 50_000_00, retirementCents: 60_000_00 },
+    income: { source: INCOME_SOURCES.GROWTH, takeHomeAnnualCents: 110_000_00 },
+    spendingCents: 60_000_00,
+    savingsCents: 6_000_00,
+    pretaxRetirementCents: 12_000_00,
+    retirementSpendingCents: 60_000_00,
+    retirementTaxRateBps: 1500,
+    growthRateBps: 900,
+    drawdownRateBps: 550,
+    inflationRateBps: 0,
+    cashRateBps: 0,
+    propertyRateBps: 0,
+  };
+  const home = {
+    id: "home",
+    name: "First home",
+    kind: LIFE_EVENT_KINDS.BUY_PROPERTY,
+    enabled: true,
+    startAge: 32,
+    priceCents: 500_000_00,
+    downPaymentCents: 100_000_00,
+    rateBps: 600,
+    termYears: 30,
+    oneTimeCents: 10_000_00,
+    annualCents: 8_000_00,
+    rentSavedCents: 24_000_00,
+  };
+  const at = (projection, age) => projection.series.find((point) => point.age === age);
+
+  test("a loan payment clears the loan in its term", () => {
+    let owed = 400_000_00;
+    const payment = loanPayment(owed, 600, 30);
+    for (let year = 0; year < 30; year += 1) owed = owed * 1.06 - payment;
+    expect(Math.abs(owed)).toBeLessThan(1);
+    expect(loanPayment(30_000_00, 0, 3)).toBe(10_000_00);
+  });
+
+  test("a purchase moves the down payment into a house and opens the mortgage", () => {
+    const projection = projectNetWorth({ ...plan, events: [home] });
+    const year = at(projection, 33);
+    expect(year.propertyCents).toBe(500_000_00);
+    expect(year.debtCents).toBeLessThan(400_000_00);
+    expect(year.debtCents).toBeGreaterThan(390_000_00);
+    expect(at(projection, 32).events).toContain("First home");
+    // Buying costs only the closing costs that year; the rest is a swap.
+    expect(at(projection, 32).consumptionCents).toBe(60_000_00 + 10_000_00 + 8_000_00 - 24_000_00);
+    expectIdentity(projection);
+  });
+
+  test("the mortgage is paid off at the end of its term", () => {
+    const projection = projectNetWorth({ ...plan, events: [home] });
+    const payoff = projection.payoffs.find((entry) => entry.id === "home");
+    expect(payoff.age).toBe(32 + 29);
+    expect(at(projection, 62).debtCents).toBe(0);
+  });
+
+  test("a down payment larger than the cash draws on investments", () => {
+    const projection = projectNetWorth({
+      ...plan,
+      events: [{ ...home, startAge: 30, downPaymentCents: 150_000_00 }],
+    });
+    expect(at(projection, 31).investedCents).toBeLessThan(50_000_00);
+    expectIdentity(projection);
+  });
+
+  test("selling pays off the loan and leaves the rest in cash", () => {
+    const sale = {
+      id: "sale",
+      name: "Downsize",
+      kind: LIFE_EVENT_KINDS.SELL_PROPERTY,
+      enabled: true,
+      startAge: 40,
+      propertyRef: "home",
+      sellingCostBps: 600,
+    };
+    const projection = projectNetWorth({ ...plan, events: [home, sale] });
+    const before = at(projection, 40);
+    const after = at(projection, 41);
+    expect(after.propertyCents).toBe(0);
+    expect(after.debtCents).toBe(0);
+    expect(projection.payoffs).toContainEqual(expect.objectContaining({ id: "home", age: 40, sold: true }));
+    // Rent and ownership costs stop with the house.
+    expect(after.consumptionCents).toBe(60_000_00);
+    expect(after.cashCents - before.cashCents).toBeGreaterThan(0);
+    expectIdentity(projection);
+  });
+
+  test("a property on the books is sold with the mortgage it names", () => {
+    const projection = projectNetWorth({
+      ...plan,
+      properties: [{ id: "acc-home", name: "Home", valueCents: 300_000_00 }],
+      debts: [{ id: "acc-mortgage", name: "Mortgage", owedCents: 200_000_00, rateBps: 0, monthlyPaymentCents: 0 }],
+      events: [
+        { id: "s", name: "Sell", kind: LIFE_EVENT_KINDS.SELL_PROPERTY, enabled: true, startAge: 31, propertyRef: "acc-home", debtRef: "acc-mortgage", sellingCostBps: 0 },
+      ],
+    });
+    const before = at(projection, 31);
+    const after = at(projection, 32);
+    expect(after.propertyCents).toBe(0);
+    expect(after.debtCents).toBe(0);
+    // $300,000 less $200,000 owed, plus the year's ordinary saving.
+    expect(after.cashCents - before.cashCents).toBe(100_000_00 + 110_000_00 - 60_000_00 - 6_000_00);
+    expectIdentity(projection);
+  });
+
+  test("a sale naming a property that does not exist does nothing", () => {
+    const projection = projectNetWorth({
+      ...plan,
+      events: [{ id: "s", name: "Sell", kind: LIFE_EVENT_KINDS.SELL_PROPERTY, enabled: true, startAge: 40, propertyRef: "gone" }],
+    });
+    expect(projection.series.every((point) => !point.events?.includes("Sell"))).toBe(true);
+  });
+});
+
+describe("the outlook, read off the walk", () => {
+  const options = { currentAge: 65, retirementAge: 65, lifeExpectancy: 90, retirementSpendingCents: 40_000_00 };
+
+  test("a pot of need on the first day is a pot of zero on the last", () => {
+    const spending = 40_000_00;
+    const needCents = Math.round(requiredNestEgg(spending, 25, 0.03));
+    const projection = projectNetWorth({
+      currentAge: 65,
+      retirementAge: 65,
+      lifeExpectancy: 90,
+      pots: { retirementCents: needCents },
+      retirementSpendingCents: spending,
+      drawdownRateBps: 300,
+    });
+    const outlook = retirementOutlook(projection, options);
+    expect(outlook.needCents).toBe(needCents);
+    expect(Math.abs(outlook.gapCents)).toBeLessThanOrEqual(1);
+    expect(Math.abs(outlook.surplusCents)).toBeLessThanOrEqual(5);
+  });
+
+  test("a pre-tax pot needs grossing up for the tax on the way out", () => {
+    const projection = projectNetWorth({
+      currentAge: 65,
+      retirementAge: 65,
+      lifeExpectancy: 90,
+      pots: { retirementCents: 1_000_000_00 },
+      retirementSpendingCents: 40_000_00,
+      retirementTaxRateBps: 2000,
+      drawdownRateBps: 300,
+    });
+    const outlook = retirementOutlook(projection, { ...options, retirementTaxRateBps: 2000 });
+    expect(outlook.needCents).toBe(Math.round(requiredNestEgg(40_000_00, 25, 0.03) / 0.8));
+  });
+
+  test("a pension lowers what has to be there", () => {
+    const pension = { id: "p", name: "Pension", kind: LIFE_EVENT_KINDS.INCOME, enabled: true, startAge: 65, years: null, annualCents: 20_000_00 };
+    const plain = { currentAge: 65, retirementAge: 65, lifeExpectancy: 90, retirementSpendingCents: 40_000_00, drawdownRateBps: 300 };
+    const without = retirementOutlook(projectNetWorth(plain), options);
+    const withIt = retirementOutlook(projectNetWorth({ ...plain, events: [pension] }), options);
+    expect(withIt.needCents).toBe(Math.round(without.needCents / 2));
+  });
+
+  test("the house is not money to spend, but selling it is", () => {
+    const plain = {
+      currentAge: 65,
+      retirementAge: 65,
+      lifeExpectancy: 90,
+      properties: [{ id: "h", name: "Home", valueCents: 500_000_00 }],
+      pots: { cashCents: 100_000_00 },
+      retirementSpendingCents: 40_000_00,
+      drawdownRateBps: 300,
+    };
+    const keep = retirementOutlook(projectNetWorth(plain), options);
+    expect(keep.projectedCents).toBe(100_000_00);
+    const sell = retirementOutlook(
+      projectNetWorth({
+        ...plain,
+        events: [{ id: "s", name: "Sell", kind: LIFE_EVENT_KINDS.SELL_PROPERTY, enabled: true, startAge: 70, propertyRef: "h", sellingCostBps: 0 }],
+      }),
+      options
+    );
+    expect(sell.needCents).toBeLessThan(keep.needCents);
+  });
+
+  test("the contribution that closes the gap lands on the target exactly", () => {
+    const plan = {
+      currentAge: 40,
+      retirementAge: 65,
+      lifeExpectancy: 90,
+      pots: { retirementCents: 50_000_00 },
+      pretaxRetirementCents: 5_000_00,
+      retirementSpendingCents: 50_000_00,
+      growthRateBps: 700,
+      drawdownRateBps: 300,
+    };
+    const outlookOptions = { currentAge: 40, retirementAge: 65, lifeExpectancy: 90, retirementSpendingCents: 50_000_00, currentContributionCents: 5_000_00 };
+    const outlook = retirementOutlook(projectNetWorth(plan), outlookOptions);
+    expect(outlook.gapCents).toBeLessThan(0);
+    const fixed = retirementOutlook(
+      projectNetWorth({ ...plan, pretaxRetirementCents: outlook.requiredContributionCents }),
+      outlookOptions
+    );
+    expect(Math.abs(fixed.gapCents)).toBeLessThan(100);
+  });
+
+  test("no spending figure is a question, not a zero target", () => {
+    const outlook = retirementOutlook(projectNetWorth({ currentAge: 40, retirementAge: 65, lifeExpectancy: 90 }), {
+      currentAge: 40,
+      retirementAge: 65,
+      lifeExpectancy: 90,
+      retirementSpendingCents: 0,
+    });
+    expect(outlook.ready).toBe(false);
+    expect(outlook.issues).toContain("Say what you expect retirement to cost each year.");
+  });
+});
+
+test("a loan bought into with inflation running still ends in its term", () => {
+  const projection = projectNetWorth({
+    currentAge: 30,
+    retirementAge: 65,
+    lifeExpectancy: 90,
+    pots: { cashCents: 200_000_00 },
+    income: { source: INCOME_SOURCES.GROWTH, takeHomeAnnualCents: 120_000_00 },
+    spendingCents: 50_000_00,
+    retirementSpendingCents: 40_000_00,
+    inflationRateBps: 250,
+    events: [
+      {
+        id: "home",
+        name: "Home",
+        kind: LIFE_EVENT_KINDS.BUY_PROPERTY,
+        enabled: true,
+        startAge: 35,
+        priceCents: 550_000_00,
+        downPaymentCents: 110_000_00,
+        rateBps: 650,
+        termYears: 30,
+      },
+    ],
+  });
+  expect(projection.payoffs.find((payoff) => payoff.id === "home").age).toBe(35 + 29);
+  expectIdentity(projection);
 });

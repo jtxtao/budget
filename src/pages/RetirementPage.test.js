@@ -116,18 +116,29 @@ describe("a plan that cannot be answered yet", () => {
 });
 
 describe("the starting point", () => {
+  // What the projection starts the retirement accounts on, read off the first
+  // row of the year-by-year table under "Net worth by age": the ticked
+  // accounts, or the typed figure, are the retirement pot it walks forward.
+  const retirementToday = () => {
+    const region = screen.getByRole("region", { name: "Net worth by age" });
+    const row = within(region)
+      .getAllByRole("row")
+      .find((candidate) => candidate.querySelector("th")?.textContent === "40");
+    return row.querySelectorAll("td")[2].textContent;
+  };
+
   test("is the accounts that are ticked, and nothing until one is", () => {
     seed();
     renderPage();
     statePlan();
 
-    expect(figure("Starting from")).toBe("$0");
+    expect(retirementToday()).toBe("$0");
 
     fireEvent.click(screen.getByRole("checkbox", { name: "401(k)" }));
-    expect(figure("Starting from")).toBe("$200,000");
+    expect(retirementToday()).toBe("$200,000");
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Brokerage" }));
-    expect(figure("Starting from")).toBe("$300,000");
+    expect(retirementToday()).toBe("$300,000");
   });
 
   test("counts an everyday account too, if that is what the user says", () => {
@@ -136,7 +147,7 @@ describe("the starting point", () => {
     statePlan();
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Everyday" }));
-    expect(figure("Starting from")).toBe("$5,000");
+    expect(retirementToday()).toBe("$5,000");
   });
 
   test("unticking one takes it back out", () => {
@@ -148,7 +159,7 @@ describe("the starting point", () => {
     fireEvent.click(holding);
     fireEvent.click(holding);
 
-    expect(figure("Starting from")).toBe("$0");
+    expect(retirementToday()).toBe("$0");
   });
 
   test("a typed figure replaces the accounts without clearing them", () => {
@@ -159,12 +170,12 @@ describe("the starting point", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "A balance I enter" }));
     type("Starting balance", "250000");
-    expect(figure("Starting from")).toBe("$250,000");
+    expect(retirementToday()).toBe("$250,000");
 
     // Back again: the ticks are still there. A toggle that destroyed the answer
     // it toggled away from could only be used once.
     fireEvent.click(screen.getByRole("radio", { name: "The accounts I tick" }));
-    expect(figure("Starting from")).toBe("$200,000");
+    expect(retirementToday()).toBe("$200,000");
     expect(screen.getByRole("checkbox", { name: "401(k)" })).toBeChecked();
   });
 
@@ -178,7 +189,7 @@ describe("the starting point", () => {
     statePlan();
 
     fireEvent.click(screen.getByRole("checkbox", { name: "401(k)" }));
-    expect(figure("Starting from")).toBe("$275,000");
+    expect(retirementToday()).toBe("$275,000");
   });
 });
 
@@ -289,18 +300,32 @@ describe("the projection", () => {
     expect(within(years).getAllByRole("rowheader")).toHaveLength(90 - 40 + 1);
   });
 
+  // A household whose budget spends every dollar it earns: $84,000 of
+  // essentials and $12,000 into retirement against $96,000 coming in, with
+  // nothing on the books but $5,000 in the bank. Now that the projection walks
+  // the whole balance sheet, unspent income builds up in cash, so a shortfall
+  // has to come from a plan that really has nothing left over.
+  const tight = {
+    accounts: [account("acc1", "Everyday", "on-budget", 500000)],
+    budgets: [
+      { id: "b1", name: "Retirement", groupId: "g1", plannedCents: 100000, bucket: "retirement" },
+      { id: "b2", name: "Groceries", groupId: null, plannedCents: 700000, bucket: "essentials" },
+    ],
+  };
+
   test("names the age the money runs out when it does", () => {
-    seed();
+    seed(tight);
     renderPage();
     statePlan();
 
-    // Nothing saved, nothing being put away, and a retirement to pay for.
+    // Nothing put away for retirement: what the budget meant for it sits in
+    // cash, and runs out a few years into a retirement it cannot carry.
     type("Saving each year", "0");
-    expect(figure("Money lasts to")).toBe("age 65");
+    expect(figure("Money lasts to")).toMatch(/^age (6[6-9]|7\d)$/);
   });
 
   test("reports the shortfall and the contribution that would close it", () => {
-    seed();
+    seed(tight);
     renderPage();
     statePlan();
 
@@ -559,5 +584,72 @@ describe("life events", () => {
     expect(within(events()).getByText("No pay")).toBeInTheDocument();
     expect(within(events()).queryByText("Mystery")).not.toBeInTheDocument();
     expect(within(events()).queryByText("No age")).not.toBeInTheDocument();
+  });
+});
+
+describe("buying and selling a home", () => {
+  const events = () => screen.getByRole("region", { name: "Life events" });
+  const dialog = () => screen.getByRole("dialog");
+  const cell = (age, column) => {
+    const region = screen.getByRole("region", { name: "Net worth by age" });
+    const row = within(region)
+      .getAllByRole("row")
+      .find((candidate) => candidate.querySelector("th")?.firstChild?.textContent === String(age));
+    return row.querySelectorAll("td")[column].textContent;
+  };
+  const PROPERTY = 3;
+  const DEBT = 4;
+
+  test("a purchase puts the house and its mortgage on the balance sheet", () => {
+    seed();
+    renderPage();
+    statePlan();
+
+    fireEvent.click(within(events()).getByRole("button", { name: "Buy a home" }));
+    expect(within(dialog()).getByLabelText("Price")).toHaveValue("450000.00");
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Add event" }));
+
+    expect(within(events()).getByText("Buy: $450,000, $90,000 down")).toBeInTheDocument();
+    expect(cell(42, PROPERTY)).toBe("$0");
+    // Bought at the start of 42, so a year of appreciation is already on it.
+    expect(cell(43, PROPERTY)).toMatch(/^\$45\d,/);
+    expect(cell(43, DEBT)).not.toBe("$0");
+  });
+
+  test("a sale names the home and takes it and its mortgage away", () => {
+    seed();
+    renderPage();
+    statePlan();
+    fireEvent.click(within(events()).getByRole("button", { name: "Buy a home" }));
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Add event" }));
+
+    fireEvent.click(within(events()).getByRole("button", { name: "Sell a home" }));
+    // Refused until it names what is sold.
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Add event" }));
+    expect(within(dialog()).getByRole("alert")).toHaveTextContent("Choose which property is sold.");
+
+    const which = within(dialog()).getByLabelText("Which property");
+    fireEvent.change(which, {
+      target: { value: within(which).getByRole("option", { name: "Buy a home" }).value },
+    });
+    fireEvent.change(within(dialog()).getByLabelText("Starts at age"), { target: { value: "50" } });
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Add event" }));
+
+    expect(within(events()).getByText("Sell: Buy a home")).toBeInTheDocument();
+    expect(cell(50, PROPERTY)).not.toBe("$0");
+    expect(cell(51, PROPERTY)).toBe("$0");
+    expect(cell(51, DEBT)).toBe("$0");
+  });
+
+  test("a price below the down payment is refused", () => {
+    seed();
+    renderPage();
+    statePlan();
+    fireEvent.click(within(events()).getByRole("button", { name: "Buy a home" }));
+    fireEvent.change(within(dialog()).getByLabelText("Down payment"), { target: { value: "$900,000" } });
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Add event" }));
+    expect(within(dialog()).getByRole("alert")).toHaveTextContent(
+      "The down payment cannot be more than the price."
+    );
   });
 });

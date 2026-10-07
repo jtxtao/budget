@@ -8,7 +8,7 @@ import {
   useRetirement,
 } from "../contexts/RetirementContext";
 import useNetWorth, { HOLDING_CLASSES } from "./useNetWorth";
-import { projectNetWorth } from "../netWorthProjection";
+import { projectNetWorth, retirementOutlook } from "../netWorthProjection";
 import { currentPeriod, fromBps } from "../utils";
 
 /**
@@ -326,8 +326,9 @@ export default function useRetirementProjection() {
       cashCents: 0,
       investedCents: 0,
       retirementCents: byAccounts ? 0 : plan.startingBalanceCents ?? 0,
-      propertyCents: 0,
     };
+    // Each property on its own, because a sale names one.
+    const properties = [];
     const debtRows = [];
     for (const row of rows) {
       if (row.band === HOLDING_CLASSES.DEBT) {
@@ -347,7 +348,7 @@ export default function useRetirementProjection() {
       } else if (row.band === HOLDING_CLASSES.INVESTED) {
         pots.investedCents += row.valueCents;
       } else {
-        pots.propertyCents += row.valueCents;
+        properties.push({ id: row.account.id, name: row.account.name, valueCents: row.valueCents });
       }
     }
 
@@ -367,6 +368,40 @@ export default function useRetirementProjection() {
     // pretax part of it is what payroll takes, the rest comes from the budget.
     const pretaxRetirementCents = Math.min(pretaxContributionCents, annualContributionCents);
     const afterTaxRetirementCents = annualContributionCents - pretaxRetirementCents;
+
+    const netWorth = projectNetWorth({
+      currentAge: plan.currentAge,
+      retirementAge: plan.retirementAge,
+      lifeExpectancy: plan.lifeExpectancy,
+      pots,
+      properties,
+      debts: debtRows.map((row) => ({
+        id: row.account.id,
+        name: row.account.name,
+        owedCents: row.owedCents,
+        rateBps: row.rateBps,
+        monthlyPaymentCents: row.monthlyPaymentCents,
+      })),
+      income: {
+        source: plan.incomeSource,
+        takeHomeAnnualCents: incomeAnnualCents,
+        growthRateBps: plan.incomeGrowthRateBps,
+        salaries: plan.salaries,
+        workingTaxRateBps: plan.workingTaxRateBps,
+      },
+      spendingCents,
+      savingsCents,
+      afterTaxRetirementCents,
+      pretaxRetirementCents,
+      retirementSpendingCents: annualSpendingCents,
+      retirementTaxRateBps: plan.retirementTaxRateBps,
+      growthRateBps: plan.growthRateBps,
+      drawdownRateBps: plan.drawdownRateBps,
+      inflationRateBps: plan.inflationRateBps,
+      cashRateBps: plan.cashRateBps,
+      propertyRateBps: plan.propertyRateBps,
+      events,
+    });
 
     return {
       plan,
@@ -390,48 +425,21 @@ export default function useRetirementProjection() {
         pots,
       },
       debtRows,
-      netWorth: projectNetWorth({
+      netWorth,
+      // What a sale or a purchase can name.
+      propertyOptions: properties.map((property) => ({ id: property.id, name: property.name })),
+      debtOptions: debtRows.map((row) => ({ id: row.account.id, name: row.account.name })),
+      // The retirement question, asked of the whole balance sheet: see
+      // `retirementOutlook`. `projectRetirement` above is no longer what the
+      // page reads; it stays as the pure function the reproduction tripwire
+      // in `netWorthProjection.test.js` holds the new walk to.
+      projection: retirementOutlook(netWorth, {
         currentAge: plan.currentAge,
         retirementAge: plan.retirementAge,
         lifeExpectancy: plan.lifeExpectancy,
-        pots,
-        debts: debtRows.map((row) => ({
-          id: row.account.id,
-          name: row.account.name,
-          owedCents: row.owedCents,
-          rateBps: row.rateBps,
-          monthlyPaymentCents: row.monthlyPaymentCents,
-        })),
-        income: {
-          source: plan.incomeSource,
-          takeHomeAnnualCents: incomeAnnualCents,
-          growthRateBps: plan.incomeGrowthRateBps,
-          salaries: plan.salaries,
-          workingTaxRateBps: plan.workingTaxRateBps,
-        },
-        spendingCents,
-        savingsCents,
-        afterTaxRetirementCents,
-        pretaxRetirementCents,
         retirementSpendingCents: annualSpendingCents,
         retirementTaxRateBps: plan.retirementTaxRateBps,
-        growthRateBps: plan.growthRateBps,
-        drawdownRateBps: plan.drawdownRateBps,
-        inflationRateBps: plan.inflationRateBps,
-        cashRateBps: plan.cashRateBps,
-        propertyRateBps: plan.propertyRateBps,
-        events,
-      }),
-      projection: projectRetirement({
-        currentAge: plan.currentAge,
-        retirementAge: plan.retirementAge,
-        lifeExpectancy: plan.lifeExpectancy,
-        startingCents,
-        annualContributionCents,
-        annualSpendingCents,
-        growthRateBps: plan.growthRateBps,
-        drawdownRateBps: plan.drawdownRateBps,
-        inflationRateBps: plan.inflationRateBps,
+        currentContributionCents: annualContributionCents,
       }),
     };
   }, [plan, rows, budgets, expectedMonthlyCents, events]);

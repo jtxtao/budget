@@ -1,8 +1,9 @@
 # Life events and the net-worth projection
 
-In progress. Steps 1–3 are built: the whole-balance-sheet projection (`src/netWorthProjection.js`)
-and its assumptions, and life events (expenses, income, pay changes) with templates and a
-savings-goal shortcut, all on the Retirement page. Buying and selling property is next. Three decisions
+Built. Steps 1–5 are done: the whole-balance-sheet projection (`src/netWorthProjection.js`)
+and its assumptions; life events (expenses, income, pay changes, buying and selling a home)
+with templates and a savings-goal shortcut; the net-worth-by-age chart; and the outlook read
+off the walk. Step 6 (scenarios and beyond) is what is left. Three decisions
 here were made in conversation rather than deduced from the code, and they are the ones to
 keep if the rest is revisited: the projection is **full net worth**, not the retirement pot
 alone; future income is **either today's take-home grown by a rate or gross salaries entered
@@ -51,7 +52,7 @@ The Retirement page's outlook still reads `projectRetirement`. It moves onto thi
 in step 5, which will also make the two disagree less: today the outlook ignores retirement
 tax and everything outside the ticked accounts.
 
-## Life events (built, except property)
+## Life events (built)
 
 `LifeEventsContext`, key `lifeEvents` (add it to `STORE_KEYS`). `{ id, name, kind, startAge,
 endAge, enabled, … }`, non-negative magnitudes with the direction in `kind`. A store of guesses
@@ -77,7 +78,10 @@ it out, which is what "with kids / without" and later Scenarios are built on.
 3. ~~Life events store, the walk reading it, templates.~~ Done. Kinds as built: expense,
    income, income change (a share of pay kept, scaling take-home, pretax and budget saving but
    not spending). `years`, not an end age.
-4. Buy and sell property.
-5. The page: stacked chart by band over age with event markers, the outlook read off this
-   projection.
+4. ~~Buy and sell property.~~ Done. Each property and each loan is walked on its own; an
+   event's mortgage is paid on top of the budget, and its payment is made at the end of the
+   year (deflated by `elapsed − since + 1`) so a 30-year loan ends in year 30.
+5. ~~The page: stacked chart by band over age with event markers, the outlook read off this
+   projection.~~ Done: `NetWorthByAgeChart`, and `retirementOutlook` — liquid money at
+   retirement against the discounted draws of the retired years, grossed for tax.
 6. Later: scenarios, per-event inflation (college), Monte Carlo.

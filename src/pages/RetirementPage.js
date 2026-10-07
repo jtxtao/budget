@@ -10,7 +10,7 @@ import RetirementAssumptionsPanel from "../components/RetirementAssumptionsPanel
 import RetirementChart from "../components/RetirementChart";
 import RetirementOutlook from "../components/RetirementOutlook";
 import RetirementStartingPoint from "../components/RetirementStartingPoint";
-import { useLifeEvents } from "../contexts/LifeEventsContext";
+import { LIFE_EVENT_KINDS, useLifeEvents } from "../contexts/LifeEventsContext";
 import { useRetirement } from "../contexts/RetirementContext";
 import { useSavingsGoals } from "../contexts/SavingsGoalsContext";
 import useRetirementProjection from "../hooks/useRetirementProjection";
@@ -48,7 +48,16 @@ export default function RetirementPage() {
     setDebtAssumption,
     resetRetirementPlan,
   } = useRetirement();
-  const { plan, accountRows, inputs, debtRows, netWorth, projection } = useRetirementProjection();
+  const {
+    plan,
+    accountRows,
+    inputs,
+    debtRows,
+    netWorth,
+    projection,
+    propertyOptions,
+    debtOptions,
+  } = useRetirementProjection();
 
   // One message per panel rather than one for the page: the field to go back to
   // is in the panel that rejected it, and a rejection at the top of the screen
@@ -62,6 +71,14 @@ export default function RetirementPage() {
   // One modal for adding and editing, the savings-goals page's arrangement:
   // `editing` is the record, `seed` what a new one starts from.
   const [eventModal, setEventModal] = useState({ show: false, editing: null, seed: null });
+  // What a sale can name: the property accounts, and every home an event buys.
+  const saleOptions = [
+    ...propertyOptions,
+    ...events
+      .filter((event) => event.kind === LIFE_EVENT_KINDS.BUY_PROPERTY)
+      .map((event) => ({ id: event.id, name: event.name })),
+  ];
+  const propertyNames = Object.fromEntries(saleOptions.map((option) => [option.id, option.name]));
 
   // Every mutator reports `{ ok, error }`; this puts the error in the panel
   // that sent it and hands the result back, so a form can keep what was typed.
@@ -71,6 +88,14 @@ export default function RetirementPage() {
     return result;
   };
   const commit = (setError) => report(setError, setRetirementPlan);
+
+  // The money a year of retirement can be paid from — everything but the
+  // house — which is what the outlook measures against what is needed.
+  const savingsSeries = netWorth.series.map((point) => ({
+    age: point.age,
+    phase: point.phase,
+    balanceCents: point.liquidCents,
+  }));
 
   return (
     <>
@@ -106,7 +131,7 @@ export default function RetirementPage() {
             </div>
 
             <RetirementChart
-              series={projection.series}
+              series={savingsSeries}
               targetCents={projection.needCents}
               retirementAge={plan.retirementAge}
               depletionAge={projection.depletionAge}
@@ -135,7 +160,7 @@ export default function RetirementPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {projection.series.map((point, index) => (
+                    {savingsSeries.map((point, index) => (
                       <tr key={point.age} className={index % 2 === 0 ? "bg-sheet" : "bg-sheet-alt"}>
                         <th
                           scope="row"
@@ -193,6 +218,7 @@ export default function RetirementPage() {
           plan={plan}
           events={events}
           goals={goals}
+          propertyNames={propertyNames}
           onAdd={(seed) => setEventModal({ show: true, editing: null, seed })}
           onEdit={(event) => setEventModal({ show: true, editing: event, seed: null })}
           onToggle={setLifeEventEnabled}
@@ -216,6 +242,8 @@ export default function RetirementPage() {
           show={eventModal.show}
           event={eventModal.editing}
           seed={eventModal.seed}
+          propertyOptions={saleOptions.filter((option) => option.id !== eventModal.editing?.id)}
+          debtOptions={debtOptions}
           handleClose={() => setEventModal((current) => ({ ...current, show: false }))}
         />
 

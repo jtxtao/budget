@@ -54,6 +54,34 @@ export const LIFE_EVENT_TEMPLATES = [
     seed: ({ retirementAge }) => ({ name: "Pension", kind: LIFE_EVENT_KINDS.INCOME, startAge: retirementAge, years: null, annualCents: 12_000_00 }),
   },
   {
+    key: "buy-home",
+    label: "Buy a home",
+    seed: ({ currentAge }) => ({
+      name: "Buy a home",
+      kind: LIFE_EVENT_KINDS.BUY_PROPERTY,
+      startAge: currentAge + 2,
+      years: 1,
+      priceCents: 450_000_00,
+      downPaymentCents: 90_000_00,
+      rateBps: 650,
+      termYears: 30,
+      oneTimeCents: 12_000_00,
+      annualCents: 9_000_00,
+      rentSavedCents: 24_000_00,
+    }),
+  },
+  {
+    key: "downsize",
+    label: "Sell a home",
+    seed: ({ retirementAge }) => ({
+      name: "Downsize",
+      kind: LIFE_EVENT_KINDS.SELL_PROPERTY,
+      startAge: retirementAge + 5,
+      years: 1,
+      sellingCostBps: 600,
+    }),
+  },
+  {
     key: "inheritance",
     label: "Inheritance",
     seed: ({ currentAge }) => ({ name: "Inheritance", kind: LIFE_EVENT_KINDS.INCOME, startAge: currentAge + 20, years: 1, oneTimeCents: 100_000_00 }),
@@ -83,13 +111,24 @@ function describeWhen(event, currentAge) {
   const thisYear = Number(todayISO().slice(0, 4));
   const yearOf = (age) => (currentAge == null ? null : thisYear + (age - currentAge));
   const at = (age) => (yearOf(age) == null ? `${age}` : `${age} (${yearOf(age)})`);
-  if (event.years === 1) return `at ${at(event.startAge)}`;
+  const once =
+    event.years === 1 ||
+    event.kind === LIFE_EVENT_KINDS.BUY_PROPERTY ||
+    event.kind === LIFE_EVENT_KINDS.SELL_PROPERTY;
+  if (once) return `at ${at(event.startAge)}`;
   if (event.years == null) return `from ${at(event.startAge)} on`;
   return `from ${at(event.startAge)} for ${event.years} years`;
 }
 
-/** What an event does, in one phrase. */
-export function describeEffect(event) {
+/** What an event does, in one phrase. `names` resolves what a sale names. */
+export function describeEffect(event, names = {}) {
+  if (event.kind === LIFE_EVENT_KINDS.BUY_PROPERTY) {
+    const down = event.downPaymentCents ? `, ${formatCents(event.downPaymentCents)} down` : "";
+    return `Buy: ${formatCents(event.priceCents ?? 0)}${down}`;
+  }
+  if (event.kind === LIFE_EVENT_KINDS.SELL_PROPERTY) {
+    return `Sell: ${names[event.propertyRef] ?? "a property no longer in the plan"}`;
+  }
   if (event.kind === LIFE_EVENT_KINDS.INCOME_CHANGE) {
     return event.keptShareBps === 0 ? "No pay" : `${formatBps(event.keptShareBps)} of pay`;
   }
@@ -104,6 +143,7 @@ export default function LifeEventsPanel({
   plan,
   events,
   goals,
+  propertyNames = {},
   onAdd,
   onEdit,
   onToggle,
@@ -145,7 +185,7 @@ export default function LifeEventsPanel({
                 <span className="font-sans text-row text-chalk-soft">
                   {describeWhen(event, plan.currentAge)}
                 </span>
-                <span className="block font-mono text-label text-chalk-soft">{describeEffect(event)}</span>
+                <span className="block font-mono text-label text-chalk-soft">{describeEffect(event, propertyNames)}</span>
               </div>
               <Button variant="outline" aria-label={`Edit ${event.name}`} onClick={() => onEdit(event)}>
                 Edit
