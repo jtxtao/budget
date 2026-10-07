@@ -28,6 +28,8 @@ const mockAuth = {
   onAuthStateChange: jest.fn(),
   signUp: jest.fn(),
   signInWithPassword: jest.fn(),
+  signInWithOtp: jest.fn(),
+  verifyOtp: jest.fn(),
   signOut: jest.fn(),
   resetPasswordForEmail: jest.fn(),
   updateUser: jest.fn(),
@@ -80,6 +82,8 @@ beforeEach(() => {
   mockAuth.getSession.mockResolvedValue({ data: { session: null } });
   mockAuth.signUp.mockResolvedValue({ data: { session: null, user: { id: "u1" } }, error: null });
   mockAuth.signInWithPassword.mockResolvedValue({ data: {}, error: null });
+  mockAuth.signInWithOtp.mockResolvedValue({ data: {}, error: null });
+  mockAuth.verifyOtp.mockResolvedValue({ data: {}, error: null });
   mockAuth.signOut.mockResolvedValue({ error: null });
   mockAuth.resetPasswordForEmail.mockResolvedValue({ error: null });
   mockAuth.updateUser.mockResolvedValue({ error: null });
@@ -217,9 +221,14 @@ describe("sign-up validation", () => {
     expect(outcome).toEqual({ ok: true, confirmationRequired: true });
     expect(result.current.pendingConfirmation).toBe("jt@example.com");
     // Trimmed on the way to the API, or the address never matches on sign-in.
+    // Asserted whole, this suite's rule: `emailRedirectTo` is what sends the
+    // confirmation link back to the app that asked rather than to the project's
+    // single Site URL, which matters because the project behind it also serves
+    // another app. jsdom's origin is "http://localhost".
     expect(mockAuth.signUp).toHaveBeenCalledWith({
       email: "jt@example.com",
       password: "correct-horse",
+      options: { emailRedirectTo: "http://localhost" },
     });
   });
 });
@@ -503,6 +512,219 @@ describe("password recovery", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Signing in by email — the route for an account that has no password at all,
+// which is what every Google, GitHub and magic-link registration on the shared
+// project produces.
+// ---------------------------------------------------------------------------
+
+describe("signing in by email", () => {
+  test("the browser asks for a link back to its own origin, and never to create an account", async () => {
+    const { result } = await mountAuth();
+
+    await act(async () => {
+      await result.current.requestSignInEmail({ email: "  jt@example.com  " });
+    });
+
+    // Asserted whole, the discipline this suite keeps for a stored record: the
+    // options are the entire security content of this call, and a field going
+    // missing is exactly what would not show up as a failure anywhere else.
+    expect(mockAuth.signInWithOtp).toHaveBeenCalledWith({
+      email: "jt@example.com",
+      options: {
+        shouldCreateUser: false,
+        emailRedirectTo: "http://localhost",
+      },
+    });
+  });
+
+  // Left at its default, `shouldCreateUser` would make this a second way to
+  // register — one that mints the passwordless account the whole route exists
+  // to rescue, for a typo as readily as for a real address.
+  test("it never offers to create an account", async () => {
+    const { result } = await mountAuth();
+    await act(async () => {
+      await result.current.requestSignInEmail({ email: "jt@example.com" });
+    });
+
+    expect(mockAuth.signInWithOtp.mock.calls[0][0].options.shouldCreateUser).toBe(false);
+  });
+
+  // `app://` is not a scheme a mail client or an OS browser can open, and an
+  // un-allow-listed redirect does not fail — it falls back to the project's
+  // Site URL, which now belongs to whichever of the two apps claimed it. So
+  // asking for a redirect we cannot receive risks sending the household into
+  // the *other* app.
+  test("the shell asks for no redirect at all", async () => {
+    const { result } = await mountAuth();
+
+    window.__hbDesktop = { snapshot: {}, path: "C:/books.json" };
+    try {
+      await act(async () => {
+        await result.current.requestSignInEmail({ email: "jt@example.com" });
+      });
+    } finally {
+      delete window.__hbDesktop;
+    }
+
+    const { options } = mockAuth.signInWithOtp.mock.calls[0][0];
+    expect(options).toEqual({ shouldCreateUser: false });
+    expect(options).not.toHaveProperty("emailRedirectTo");
+  });
+
+  // The leak this closes: with `shouldCreateUser` false, an address nobody has
+  // registered is refused by name. Reporting that would turn the form into a
+  // way to test whether a given person keeps their books here.
+  test("an unknown address reports success, so the form cannot be used to probe for accounts", async () => {
+    mockAuth.signInWithOtp.mockResolvedValue({
+      data: {},
+      error: { code: "otp_disabled", message: "Signups not allowed for otp" },
+    });
+    const { result } = await mountAuth();
+
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.requestSignInEmail({ email: "nobody@example.com" });
+    });
+
+    expect(outcome).toEqual({ ok: true });
+    // And it is indistinguishable from the real thing right down to the screen
+    // that follows, which is the half a wording-only fix would have missed.
+    expect(result.current.pendingSignInEmail).toBe("nobody@example.com");
+  });
+
+  test("a real failure is still reported, as a sentence", async () => {
+    mockAuth.signInWithOtp.mockResolvedValue({
+      data: {},
+      error: { message: "For security purposes, you can only request this after 54 seconds." },
+    });
+    const { result } = await mountAuth();
+
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.requestSignInEmail({ email: "jt@example.com" });
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error).toMatch(/Too many attempts/);
+    expect(result.current.pendingSignInEmail).toBeNull();
+  });
+
+  test("junk in the email field is refused before the network", async () => {
+    const { result } = await mountAuth();
+
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.requestSignInEmail({ email: "not-an-address" });
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(mockAuth.signInWithOtp).not.toHaveBeenCalled();
+  });
+
+  // The address is half of the credential and only the code was typed, so
+  // taking it from anywhere but the pending request would let a code be
+  // verified against an address it was never sent to.
+  test("a code cannot be verified with no request outstanding", async () => {
+    const { result } = await mountAuth();
+
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.verifySignInCode({ code: "428193" });
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(mockAuth.verifyOtp).not.toHaveBeenCalled();
+  });
+
+  test("the code goes up with the address it was sent to, under the email type", async () => {
+    const { result } = await mountAuth();
+    await act(async () => {
+      await result.current.requestSignInEmail({ email: "jt@example.com" });
+    });
+
+    await act(async () => {
+      // Spaced, the way a code arrives out of a copy and paste.
+      await result.current.verifySignInCode({ code: " 428 193 " });
+    });
+
+    expect(mockAuth.verifyOtp).toHaveBeenCalledWith({
+      email: "jt@example.com",
+      token: "428193",
+      type: "email",
+    });
+  });
+
+  test("a lapsed code is one sentence a person can act on", async () => {
+    mockAuth.verifyOtp.mockResolvedValue({
+      data: {},
+      error: { message: "Token has expired or is invalid" },
+    });
+    const { result } = await mountAuth();
+    await act(async () => {
+      await result.current.requestSignInEmail({ email: "jt@example.com" });
+    });
+
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.verifySignInCode({ code: "428193" });
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error).toMatch(/expired or does not match/);
+  });
+
+  test("something that is not a code at all costs no round trip", async () => {
+    const { result } = await mountAuth();
+    await act(async () => {
+      await result.current.requestSignInEmail({ email: "jt@example.com" });
+    });
+
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.verifySignInCode({ code: "let me in" });
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(mockAuth.verifyOtp).not.toHaveBeenCalled();
+  });
+
+  // This provider outlives `AuthPage`, which unmounts the moment a session
+  // exists and mounts again on the next sign-out. A pending address left here
+  // would greet that sign-out with "check your inbox" for an email sent before
+  // the session that just ended.
+  test("a session clears the pending address, so the next sign-out starts clean", async () => {
+    const { result } = await mountAuth();
+    await act(async () => {
+      await result.current.requestSignInEmail({ email: "jt@example.com" });
+    });
+    expect(result.current.pendingSignInEmail).toBe("jt@example.com");
+
+    await act(async () => {
+      mockAuthListener("SIGNED_IN", { user: { id: "u1", email: "jt@example.com" } });
+    });
+    expect(result.current.pendingSignInEmail).toBeNull();
+
+    await act(async () => {
+      mockAuthListener("SIGNED_OUT", null);
+    });
+    expect(result.current.pendingSignInEmail).toBeNull();
+  });
+
+  test("an unconfigured build has nothing to email", async () => {
+    mockConfigured = false;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.requestSignInEmail({ email: "jt@example.com" });
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error).toMatch(/no account server/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // describeAuthError — the one place an API string becomes a sentence, so two
 // forms cannot word the same failure differently.
 // ---------------------------------------------------------------------------
@@ -512,6 +734,8 @@ describe("describeAuthError", () => {
     ["Invalid login credentials", /do not match an account/],
     ["User already registered", /already exists.*Sign in instead/],
     ["Email not confirmed", /Confirm your email address first/],
+    ["Token has expired or is invalid", /expired or does not match/],
+    ["Invalid token", /expired or does not match/],
     ["Failed to fetch", /Could not reach the server/],
   ])("%s becomes a sentence for a person", (message, expected) => {
     expect(describeAuthError({ message })).toMatch(expected);

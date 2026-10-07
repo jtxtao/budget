@@ -1864,6 +1864,145 @@ describe("assignments", () => {
   });
 });
 
+describe("moving money between two categories", () => {
+  function funded() {
+    const { result } = renderHook(() => useAssignments(), { wrapper });
+    act(() => {
+      result.current.setPeriodAssignments({
+        period: "2026-01",
+        entries: [
+          { budgetId: "b1", amountCents: 20000 },
+          { budgetId: "b2", amountCents: 5000 },
+        ],
+      });
+    });
+    return result;
+  }
+
+  test("one side loses exactly what the other gains", () => {
+    const result = funded();
+
+    let outcome;
+    act(() => {
+      outcome = result.current.moveBetweenBudgets({
+        fromBudgetId: "b1",
+        toBudgetId: "b2",
+        period: "2026-01",
+        amountCents: 7500,
+      });
+    });
+
+    expect(outcome.ok).toBe(true);
+    expect(result.current.getAssignedCents("b1", "2026-01")).toBe(12500);
+    expect(result.current.getAssignedCents("b2", "2026-01")).toBe(12500);
+  });
+
+  test("it is one write, so no intermediate state is ever stored", () => {
+    const result = funded();
+
+    act(() => {
+      result.current.moveBetweenBudgets({
+        fromBudgetId: "b1",
+        toBudgetId: "b2",
+        period: "2026-01",
+        amountCents: 7500,
+      });
+    });
+
+    // The whole reason this is a mutator rather than two calls to
+    // setAssignedAmount: the sum across the two rows is unchanged at every
+    // point a reader of storage could look, so the pool is never briefly
+    // inflated by money that was never free.
+    const total = stored("assignments").reduce((sum, row) => sum + row.assignedCents, 0);
+    expect(total).toBe(25000);
+  });
+
+  test("a destination with no row yet gets one", () => {
+    const result = funded();
+
+    act(() => {
+      result.current.moveBetweenBudgets({
+        fromBudgetId: "b1",
+        toBudgetId: "b3",
+        period: "2026-01",
+        amountCents: 5000,
+      });
+    });
+
+    expect(result.current.getAssignedCents("b3", "2026-01")).toBe(5000);
+    expect(result.current.getAssignedCents("b1", "2026-01")).toBe(15000);
+  });
+
+  test("a source emptied back to zero is pruned, not stored as a zero row", () => {
+    const result = funded();
+
+    act(() => {
+      result.current.moveBetweenBudgets({
+        fromBudgetId: "b1",
+        toBudgetId: "b2",
+        period: "2026-01",
+        amountCents: 20000,
+      });
+    });
+
+    expect(stored("assignments")).toHaveLength(1);
+    expect(result.current.getAssignedCents("b1", "2026-01")).toBe(0);
+  });
+
+  test("moving more than the source was assigned is allowed", () => {
+    const result = funded();
+
+    let outcome;
+    act(() => {
+      outcome = result.current.moveBetweenBudgets({
+        fromBudgetId: "b2",
+        toBudgetId: "b1",
+        period: "2026-01",
+        amountCents: 9000,
+      });
+    });
+
+    // Covering one category out of another that has not been funded yet is a
+    // real thing to want before a paycheque lands, and the app says so the one
+    // way it ever does — the figure goes red. Refusing it here would leave the
+    // user with a shortfall they can see and cannot settle.
+    expect(outcome.ok).toBe(true);
+    expect(result.current.getAssignedCents("b2", "2026-01")).toBe(-4000);
+  });
+
+  test("zero, a negative, a missing side and a self-move are all refused", () => {
+    const result = funded();
+    const move = (patch) => {
+      let outcome;
+      act(() => {
+        outcome = result.current.moveBetweenBudgets({
+          fromBudgetId: "b1",
+          toBudgetId: "b2",
+          period: "2026-01",
+          amountCents: 1000,
+          ...patch,
+        });
+      });
+      return outcome;
+    };
+
+    // A move is a positive amount in a stated direction; an amount is not the
+    // place to contradict the two selects.
+    expect(move({ amountCents: 0 }).ok).toBe(false);
+    expect(move({ amountCents: -1000 }).ok).toBe(false);
+    // `amountCents` is what the mutator prefers, so a junk string only reaches
+    // `toCents` once the cents figure is out of the way.
+    expect(move({ amountCents: undefined, amount: "twelve apples" }).ok).toBe(false);
+    expect(move({ toBudgetId: null }).ok).toBe(false);
+    expect(move({ toBudgetId: "b1" }).ok).toBe(false);
+    expect(move({ period: "nonsense" }).ok).toBe(false);
+
+    // Nothing landed through any of them.
+    expect(result.current.getAssignedCents("b1", "2026-01")).toBe(20000);
+    expect(result.current.getAssignedCents("b2", "2026-01")).toBe(5000);
+  });
+});
+
 describe("the day-one seed", () => {
   const LEGACY = [
     { id: "e1", description: "Shop", amount: 20, budgetId: "b1", date: "2026-01-04" },
@@ -2269,6 +2408,57 @@ describe("the books balance after every mutation", () => {
       });
     });
     expect(bad.ok).toBe(false);
+  });
+
+  test("moving money between categories leaves the pool exactly where it was", () => {
+    localStorage.setItem(
+      "budgets",
+      JSON.stringify([
+        { id: "b1", name: "Groceries" },
+        { id: "b2", name: "Dining out" },
+      ])
+    );
+    seedAccounts();
+
+    const { result } = renderHook(useLedger, { wrapper });
+    act(() => {
+      result.current.ledger.addTransaction({
+        kind: "inflow",
+        description: "Pay",
+        amountCents: 300000,
+        date: "2026-08-01",
+        accountId: ACCOUNT.id,
+      });
+    });
+    act(() => {
+      result.current.assignments.setPeriodAssignments({
+        period: "2026-08",
+        entries: [
+          { budgetId: "b1", amountCents: 60000 },
+          { budgetId: "b2", amountCents: 20000 },
+        ],
+      });
+    });
+    expectAllBalanced(result.current);
+
+    const poolBefore = result.current.now.toBeAssignedCents;
+
+    act(() => {
+      result.current.assignments.moveBetweenBudgets({
+        fromBudgetId: "b1",
+        toBudgetId: "b2",
+        period: "2026-08",
+        amountCents: 15000,
+      });
+    });
+
+    // The two deltas cancel, so this is the one mutation that moves money
+    // between envelopes and cannot touch what is left to assign. If a future
+    // change makes a move route through the pool, this is what catches it.
+    expectAllBalanced(result.current);
+    expect(result.current.now.toBeAssignedCents).toBe(poolBefore);
+    expect(envelopeFor(result.current.now, "b1").availableCents).toBe(45000);
+    expect(envelopeFor(result.current.now, "b2").availableCents).toBe(35000);
   });
 });
 

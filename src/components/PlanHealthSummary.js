@@ -1,4 +1,5 @@
 import { PLAN_BUCKETS } from "../contexts/BudgetsContext";
+import { bucketTone } from "../bucketTones";
 import { formatCents } from "../utils";
 
 /**
@@ -54,18 +55,10 @@ import { formatCents } from "../utils";
 // figure, money spent on wants is the caution colour, money kept is the same
 // green as income.
 //
-// Only ever on `text-figure`. These accents are tuned as marks — `azure` reaches
-// 4.1:1 on `panel`, which clears AA at that size and nowhere below it, and is
-// why secondary text on this palette is `chalk-soft` instead. Colour is never
-// the only channel: every swatch has its name beside it.
-const BUCKET_TONES = {
-  [PLAN_BUCKETS.ESSENTIALS]: { fill: "bg-azure", text: "text-azure" },
-  [PLAN_BUCKETS.FUN]: { fill: "bg-sulfur", text: "text-sulfur" },
-  [PLAN_BUCKETS.SAVINGS]: { fill: "bg-verdant", text: "text-verdant" },
-  // Same hue the net-worth chart uses for holdings actually invested, which is
-  // where most retirement money ends up.
-  [PLAN_BUCKETS.RETIREMENT]: { fill: "bg-invested", text: "text-invested" },
-};
+// The map itself is `src/bucketTones.js`, because this is one of three screens
+// that draw the same four shares — the other two read the books rather than the
+// estimates — and the comparison between them is only worth anything while all
+// three agree about which colour is which.
 
 /** Cents as the dollars the field asks for, and blank for a figure nobody has
  *  stated — matching `RetirementAssumptionsPanel`'s own `asDollars`, since the
@@ -224,13 +217,13 @@ export default function PlanHealthSummary({
                 <dt className="flex items-center gap-2 font-mono text-label uppercase text-chalk-soft">
                   <span
                     aria-hidden="true"
-                    className={`h-2 w-2 shrink-0 ${BUCKET_TONES[row.bucket].fill}`}
+                    className={`h-2 w-2 shrink-0 ${bucketTone(row.bucket).swatch}`}
                   />
                   {row.label}
                 </dt>
                 <dd
                   className={`mt-1 font-mono text-figure font-medium tabular-nums ${
-                    BUCKET_TONES[row.bucket].text
+                    bucketTone(row.bucket).text
                   }`}
                 >
                   {row.percent}%

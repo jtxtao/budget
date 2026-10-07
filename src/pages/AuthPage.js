@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Field from "../components/Field";
 import Button from "../components/Button";
-import { MIN_PASSWORD_LENGTH, useAuth } from "../contexts/AuthContext";
+import { MAGIC_CODE_LENGTH, MIN_PASSWORD_LENGTH, useAuth } from "../contexts/AuthContext";
 import { isDesktop } from "../storage";
 
 /**
@@ -13,7 +13,15 @@ import { isDesktop } from "../storage";
  * email survives the switch between them, which it could not across a route
  * change. The recovery form is a fourth state, but not a mode: it is *entered
  * by following a link*, never by choosing it, so it takes over the page rather
- * than sitting in the switcher.
+ * than sitting in the switcher. The screen that waits on an emailed sign-in is
+ * a fifth, for the same reason.
+ *
+ * **Signing in by email is not a mode either, and deliberately so.** It needs
+ * exactly one field, and that field is already on the sign-in form — so it is a
+ * second button under the same form rather than a screen of its own that would
+ * ask again for the address just typed. The password field sitting above it
+ * unused is the honest shape of the choice: type your password, or have us send
+ * something instead.
  *
  * **These forms are controlled, unlike every `Add*Modal` in the app.** That rule
  * exists because those modals stay mounted and `defaultValue` silently stops
@@ -28,10 +36,14 @@ export default function AuthPage() {
     signUp,
     continueLocally,
     requestPasswordReset,
+    requestSignInEmail,
+    verifySignInCode,
     updatePassword,
     recovering,
     pendingConfirmation,
     dismissConfirmation,
+    pendingSignInEmail,
+    dismissSignInEmail,
     // The account the recovery link signed us in as. Named apart from the
     // `email` field below, which is what the person is typing.
     email: accountEmail,
@@ -41,6 +53,7 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [code, setCode] = useState("");
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -53,6 +66,7 @@ export default function AuthPage() {
     // failed to sign in and is now registering is registering that address.
     setPassword("");
     setConfirmation("");
+    setCode("");
   }
 
   async function run(action) {
@@ -68,6 +82,24 @@ export default function AuthPage() {
     const result = await run(() => updatePassword({ password, confirmation }));
     if (!result.ok) setError(result.error);
     // On success the provider drops `recovering` and the app renders behind us.
+  }
+
+  async function handleCode(e) {
+    e.preventDefault();
+    const result = await run(() => verifySignInCode({ code }));
+    if (!result.ok) setError(result.error);
+    // On success the session lands and this whole page unmounts.
+  }
+
+  async function sendSignInEmail(address) {
+    const result = await run(() => requestSignInEmail({ email: address }));
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    // Nothing is set on success: the provider now holds the address, and the
+    // screen that waits on it takes over the page.
+    setCode("");
   }
 
   async function handleSubmit(e) {
@@ -168,6 +200,81 @@ export default function AuthPage() {
     );
   }
 
+  // ---------------------------------------------------------------------
+  // A sign-in email is out. Not a mode either: the provider holds the address,
+  // and this is the one screen in the app where the two builds are offered
+  // different *mechanics* rather than different wording — a browser follows the
+  // link, the shell cannot, so it reads the code out of the same email.
+  // ---------------------------------------------------------------------
+  if (pendingSignInEmail) {
+    const desktop = isDesktop();
+    return (
+      <Shell
+        title={desktop ? "Enter your sign-in code" : "Check your inbox"}
+        // Hedged in both builds, for the reason the reset notice is hedged: a
+        // screen that appeared only for addresses that exist would answer "does
+        // this household keep their books here" to anybody who asked.
+        blurb={
+          desktop
+            ? `If an account exists for ${pendingSignInEmail}, we have sent it a ${MAGIC_CODE_LENGTH}-digit code. It is good for one hour.`
+            : `If an account exists for ${pendingSignInEmail}, a sign-in link is on its way. It is good for one hour.`
+        }
+      >
+        {desktop ? (
+          <form onSubmit={handleCode} noValidate>
+            {/* `text`, never `number` — the app's rule about figures, holding
+                here for its own reason: a code can begin with a zero, and a
+                number input drops it. It is also pasted at least as often as it
+                is typed, which spinners only get in the way of.
+                `one-time-code` is what lets a password manager, and macOS
+                handoff, offer the code without the household retyping it. */}
+            <Field
+              label="Sign-in code"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              aria-describedby="code-hint"
+              required
+            />
+            <p id="code-hint" className="-mt-3.5 mb-5 font-sans text-row leading-relaxed text-chalk-soft">
+              {MAGIC_CODE_LENGTH} digits, from the email. The link in that message will not open this
+              app — the code is the part to use here.
+            </p>
+            <Message error={error} notice={notice} />
+            <Button variant="primary" type="submit" disabled={busy} className="w-full">
+              {busy ? "Signing in…" : "Sign in"}
+            </Button>
+          </form>
+        ) : (
+          <>
+            <p className="mb-6 font-sans text-sm leading-relaxed text-chalk-soft">
+              Follow the link and you are in — there is no password to type. If the message has not
+              arrived in a few minutes, check the spam folder.
+            </p>
+            <Message error={error} notice={notice} />
+          </>
+        )}
+
+        <div className="mt-6 border-t border-edge pt-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Switcher onClick={() => sendSignInEmail(pendingSignInEmail)}>Send another</Switcher>
+            <Switcher
+              onClick={() => {
+                dismissSignInEmail();
+                switchTo("signIn");
+              }}
+            >
+              Back to sign in
+            </Switcher>
+          </div>
+        </div>
+      </Shell>
+    );
+  }
+
   const titles = {
     signIn: "Sign in",
     signUp: "Create an account",
@@ -248,6 +355,32 @@ export default function AuthPage() {
             ? "Send reset link"
             : "Sign in"}
         </Button>
+
+        {/* Inside the form, because it reads the email field above it — and a
+            `type="button"`, so it cannot be what Enter triggers. Offered only
+            on sign-in: there is nothing to email somebody who is registering,
+            and the reset form is already an emailed route. */}
+        {mode === "signIn" && (
+          <>
+            <div className="my-5 flex items-center gap-3">
+              <span className="h-px flex-1 bg-edge" />
+              <span className="font-mono text-label uppercase text-chalk-soft">or</span>
+              <span className="h-px flex-1 bg-edge" />
+            </div>
+            <Button
+              variant="outline"
+              type="button"
+              disabled={busy}
+              className="w-full"
+              onClick={() => sendSignInEmail(email)}
+            >
+              {isDesktop() ? "Email me a sign-in code" : "Email me a sign-in link"}
+            </Button>
+            <p className="mt-2 text-center font-sans text-row text-chalk-soft">
+              No password needed — useful if you have never set one.
+            </p>
+          </>
+        )}
       </form>
 
       <div className="mt-6 border-t border-edge pt-5">

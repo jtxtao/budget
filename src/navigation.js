@@ -10,59 +10,50 @@ import SavingsGoalsPage from "./pages/SavingsGoalsPage";
 // Single source of truth for both the route table (App.js) and the tab bar
 // (AppShell.js). Adding a page means adding one entry here.
 //
-// `family` mirrors the tab colours of the spreadsheet this app replaces, where
-// the colour marks which family a tab belongs to rather than decorating it:
-// configuration is gold, the day-to-day ledger is rust, and every reporting tab
-// is blue. It is drawn as a dot beside the label, so the active tab can wear the
-// one underline colour every tab shares. Classes are written out in full
-// because Tailwind only keeps the class names it can see as literal strings.
+// A tab is its label and nothing else. There was once a coloured dot beside each
+// one, marking which family the tab belonged to the way the tabs of the
+// spreadsheet this app replaces are coloured — but five of the eight shared the
+// one colour, so the mark distinguished almost nothing and read as decoration
+// instead. The active tab's underline is what says where you are.
 export const navigation = [
   {
     path: "/plan",
     label: "Configuration",
     Component: ConfigurationPage,
-    family: "bg-coin",
   },
   {
     path: "/",
     label: "Dashboard",
     Component: DashboardPage,
-    family: "bg-on-canopy",
   },
   {
     path: "/transactions",
     label: "Transactions",
     Component: TransactionsPage,
-    family: "bg-on-canopy-rust",
   },
   {
     path: "/reports",
     label: "Reports",
     Component: ReportsPage,
-    family: "bg-on-canopy-sky",
   },
   {
     path: "/donations",
     label: "Donations",
     Component: DonationsPage,
-    family: "bg-on-canopy-sky",
   },
   {
     path: "/net-worth",
     label: "Net worth",
     Component: NetWorthPage,
-    family: "bg-on-canopy-sky",
   },
   {
     path: "/retirement",
     label: "Retirement",
     Component: RetirementPage,
-    family: "bg-on-canopy-sky",
   },
   {
     path: "/savings-goals",
     label: "Savings goals",
     Component: SavingsGoalsPage,
-    family: "bg-on-canopy-sky",
   },
 ];

@@ -13,6 +13,37 @@
 --
 -- The security story is correspondingly small: one table, one policy pair, one
 -- predicate to get right. `user_id = auth.uid()` is the whole of it.
+--
+-- ONE THING THIS FILE CANNOT STATE, and it is load-bearing for the desktop
+-- build: the project's **Magic Link** email template has to carry `{{ .Token }}`
+-- as well as `{{ .ConfirmationURL }}`. It is an Auth dashboard setting, not SQL,
+-- so running this script is necessary and not sufficient.
+--
+-- And that setting has a prerequisite of its own, which is the part that
+-- surprises: **Supabase will not let a template be edited at all until custom
+-- SMTP is configured.** On the built-in sender the templates are fixed, and the
+-- stock Magic Link template carries only the link. So the desktop sign-in
+-- cannot work on the default mail setup — not because of a plan tier, but
+-- because the one line it needs is in a template that cannot be touched. Any
+-- SMTP provider does: Gmail with an app password needs no domain and is more
+-- than enough for one household.
+--
+-- The reason is that signing in by email is one call with two shapes of answer
+-- (`requestSignInEmail` in `src/contexts/AuthContext.js`). A browser follows the
+-- link. The shell is served over `app://`, which no mail client and no OS
+-- browser can open, so it asks for no redirect and reads the six-digit token out
+-- of that same email instead — and Supabase renders both halves from this one
+-- template. Leave the token out and the web app is unaffected while the desktop
+-- app's sign-in silently has nothing to type: the email arrives, it just does
+-- not contain the only part of itself the shell can use.
+--
+-- Two dashboard settings beside it, for the same flow:
+--   * Site URL must point at the web deploy. An un-allow-listed redirect does
+--     not fail the request, it falls back to this — so where the project is
+--     shared with another app, a wrong value here sends households into it.
+--   * Email OTP length is what `MAGIC_CODE_LENGTH` states in the copy. The
+--     client's own check accepts six to ten digits so that raising it here does
+--     not turn the form into one that refuses every real code.
 
 create table if not exists public.app_state (
   -- On delete cascade: closing an account takes its books with it. There is no
@@ -104,7 +135,13 @@ begin
 end
 $$;
 
--- Realtime sends only the primary key on UPDATE unless the table replicates the
--- full row. The client needs `value` off the payload to apply a remote change
--- without a round trip.
-alter table public.app_state replica identity;
+-- Realtime sends only the replica-identity columns for the *old* tuple, which by
+-- default is the primary key alone. `SyncContext`'s subscription reads
+-- `payload.old` on a DELETE, and Supabase evaluates RLS against the old row for
+-- UPDATE and DELETE, so the table has to replicate the whole thing.
+--
+-- `FULL` and not the bare statement: `ALTER TABLE ... REPLICA IDENTITY` takes a
+-- mode (DEFAULT / FULL / NOTHING / USING INDEX) and is a syntax error without
+-- one — which, in the SQL editor, rejects the *whole* script before any of it
+-- runs, so this line failing means nothing above it was applied either.
+alter table public.app_state replica identity full;

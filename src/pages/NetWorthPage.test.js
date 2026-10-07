@@ -3,7 +3,14 @@ import { MemoryRouter } from "react-router-dom";
 import AppProviders from "../contexts/AppProviders";
 import NetWorthPage from "./NetWorthPage";
 import { routerFuture } from "../routerFuture";
-import { addMonths, currentPeriod, formatPeriod } from "../utils";
+import {
+  addMonths,
+  currentPeriod,
+  formatDateMedium,
+  formatPeriod,
+  periodEnd,
+  todayISO,
+} from "../utils";
 
 /**
  * The page through the real stores, as with the dashboard: the figures on it are
@@ -355,4 +362,127 @@ test("an empty file points at where accounts are added rather than showing zeroe
 
   expect(screen.getByRole("link", { name: /add them on the budget plan/i })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Update balances" })).toBeDisabled();
+});
+
+/**
+ * Settling the gap between a statement and the books.
+ *
+ * `driftCents` was reported and deliberately never resolved, which left the user
+ * able to see a disagreement and unable to do anything about it. These drive the
+ * other half, through the real stores, because the whole design claim is that
+ * the correction is an **ordinary transaction** — so what has to be asserted is
+ * the row that lands in the ledger and the gap closing as a consequence of it,
+ * neither of which a mocked hook could show.
+ */
+const PLAN = {
+  budgetGroups: [{ id: "g1", name: "Bills", bucket: "essentials" }],
+  budgets: [{ id: "b1", name: "Groceries", groupId: "g1", plannedCents: 60000, bucket: null }],
+};
+
+/** Read a figure off a statement into the month on screen — which is what makes
+ *  a drift at all, the books having no idea about it. */
+function stateBalance(value) {
+  fireEvent.click(screen.getByRole("button", { name: "Update balances" }));
+  fireEvent.change(field("Value of Everyday"), { target: { value } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+}
+
+const settle = (name) => holdings().getByRole("button", { name });
+
+/** One holding's row, because the Source column is per account and the monthly
+ *  pass writes every account it asked about — so "Updated this month" is true of
+ *  more than one of them. */
+const holding = (name) => within(holdings().getByText(name).closest("tr"));
+
+test("a statement above the books is settled as income, and the gap closes", () => {
+  seed(PLAN);
+  renderPage();
+  stateBalance("$4,120");
+
+  fireEvent.click(settle(`Settle the $120 difference on Everyday`));
+  // Money that arrived and was never written down is income, so no category is
+  // asked for — it goes to the pool, where the household can assign it.
+  expect(screen.queryByLabelText("Category")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Record it" }));
+
+  expect(JSON.parse(localStorage.getItem("transactions"))).toEqual([
+    {
+      id: expect.any(String),
+      kind: "inflow",
+      payeeId: null,
+      description: `Balance correction · ${formatPeriod(PERIOD)}`,
+      amountCents: 12000,
+      date: todayISO(),
+      accountId: "acc-cash",
+      toAccountId: null,
+      budgetId: null,
+      splits: null,
+    },
+  ]);
+
+  // The books now say what the statement says, so the cell drops its gap — and
+  // with it the offer to settle one.
+  expect(holding("Everyday").getByText("Updated this month")).toBeInTheDocument();
+  expect(
+    holdings().queryByRole("button", { name: /settle the .* difference on Everyday/i })
+  ).not.toBeInTheDocument();
+});
+
+test("a statement below the books is spending, and it has to name a category", () => {
+  seed(PLAN);
+  renderPage();
+  stateBalance("$3,900");
+
+  fireEvent.click(settle(`Settle the $100 difference on Everyday`));
+  // The store's own rule for an outflow, checked here so the refusal names the
+  // money rather than the field.
+  fireEvent.click(screen.getByRole("button", { name: "Record it" }));
+  expect(screen.getByRole("alert")).toHaveTextContent("Choose the category this money came out of.");
+  expect(JSON.parse(localStorage.getItem("transactions"))).toEqual([]);
+
+  fireEvent.change(screen.getByLabelText("Category"), { target: { value: "b1" } });
+  fireEvent.click(screen.getByRole("button", { name: "Record it" }));
+
+  const stored = JSON.parse(localStorage.getItem("transactions"));
+  expect(stored).toHaveLength(1);
+  expect(stored[0]).toMatchObject({ kind: "outflow", amountCents: 10000, budgetId: "b1" });
+  expect(holding("Everyday").getByText("Updated this month")).toBeInTheDocument();
+});
+
+test("the correction is dated inside the month the statement is for", () => {
+  seed(PLAN);
+  renderPage();
+
+  fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
+  stateBalance("$4,120");
+  fireEvent.click(settle(`Settle the $120 difference on Everyday`));
+
+  // Month-end rather than today: the gap is a disagreement about *that* month,
+  // and a correction landing in this one would leave it standing.
+  expect(
+    screen.getByText(
+      `Dated ${formatDateMedium(periodEnd(LAST_MONTH))}, inside ${formatPeriod(LAST_MONTH)}`,
+      { exact: false }
+    )
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Record it" }));
+
+  expect(JSON.parse(localStorage.getItem("transactions"))[0].date).toBe(periodEnd(LAST_MONTH));
+  expect(holding("Everyday").getByText("Updated this month")).toBeInTheDocument();
+});
+
+test("a holding valued by hand has no gap to settle, because growth is not a disagreement", () => {
+  seed({
+    ...PLAN,
+    accountBalances: [{ id: "bal1", accountId: "acc-401k", period: PERIOD, amountCents: 1250000 }],
+  });
+  renderPage();
+
+  // $2,500 above what the books alone would make of the 401(k) — and that is the
+  // market, not a missing row. `driftCents` is null for one, so nothing here is
+  // offered as settleable.
+  expect(holding("401(k)").getByText("Updated this month")).toBeInTheDocument();
+  expect(
+    holdings().queryByRole("button", { name: /difference on 401\(k\)/i })
+  ).not.toBeInTheDocument();
 });

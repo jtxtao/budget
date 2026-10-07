@@ -210,3 +210,65 @@ export function radiusFor(barWidth) {
   if (barWidth >= 10) return 4;
   return barWidth >= 5 ? 2 : 0;
 }
+
+/**
+ * A trailing moving average over a run of monthly figures — the trend under the
+ * noise, which is the one question a column chart genuinely cannot answer.
+ *
+ * **Trailing rather than centred**, because the right-hand end of these charts
+ * is always the month the reader came for. A centred average has no value for
+ * the last `window / 2` months, so the newest column — the one being read — is
+ * exactly the one the trend abandons. Trailing lags by half a window instead,
+ * which is the honest cost and is visible as the line sitting behind a turn.
+ *
+ * **The first months come back `null` rather than as an average of whatever is
+ * there so far.** A "three-month average" computed from one month is that
+ * month, drawn as though it were a trend, and the line would open by tracing
+ * the data exactly before peeling away from it — which reads as the trend
+ * changing when all that changed is how many months went into it. Null is a
+ * gap, and the caller draws the line from where it becomes true.
+ *
+ * Returns an array the same length as `values`, so a caller can index it
+ * against its own months without tracking an offset.
+ */
+export function movingAverage(values, window = 3) {
+  if (!(window >= 1)) return values.map(() => null);
+
+  let sum = 0;
+  return values.map((value, index) => {
+    sum += value;
+    if (index >= window) sum -= values[index - window];
+    return index < window - 1 ? null : Math.round(sum / window);
+  });
+}
+
+/**
+ * The polyline points for a series that may have gaps in it, as one or more
+ * runs of consecutive real values.
+ *
+ * A `null` is a month the series has no value for, and the two reasons it
+ * happens are different: a moving average has no value until its window fills,
+ * and a series can simply stop. Either way the line must **break** rather than
+ * span the gap — a straight segment drawn across missing months asserts a
+ * reading nobody took, which is the same lie `useNetWorth` refuses when it will
+ * not propagate a snapshot backwards.
+ *
+ * A run of one point gets no line of its own, because a polyline of a single
+ * point draws nothing; callers that want those visible draw a marker.
+ */
+export function lineRuns(values, { x, y }) {
+  const runs = [];
+  let run = [];
+
+  values.forEach((value, index) => {
+    if (value == null) {
+      if (run.length > 1) runs.push(run);
+      run = [];
+      return;
+    }
+    run.push(`${x(index)},${y(value)}`);
+  });
+  if (run.length > 1) runs.push(run);
+
+  return runs.map((points) => points.join(" "));
+}

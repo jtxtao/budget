@@ -1,5 +1,5 @@
 import SplitGauge from "./SplitGauge";
-import { PLAN_BUCKETS } from "../contexts/BudgetsContext";
+import { bucketTone } from "../bucketTones";
 import { formatBps, formatCents, formatPeriod } from "../utils";
 
 /**
@@ -41,21 +41,12 @@ function netTone(cents) {
   return "text-chalk";
 }
 
-// The same four colours the plan's own split wears on Configuration, so the
-// planned split and this one — the same four shares read off the books instead
-// of off the estimates — can be held up against each other.
-const BUCKET_TONES = {
-  [PLAN_BUCKETS.ESSENTIALS]: "bg-azure",
-  [PLAN_BUCKETS.FUN]: "bg-sulfur",
-  [PLAN_BUCKETS.SAVINGS]: "bg-verdant",
-  [PLAN_BUCKETS.RETIREMENT]: "bg-invested",
-};
-// A category filed under no bucket at all — the Uncategorized sentinel, or an id
-// whose category was deleted. It gets a segment rather than being dropped: the
-// split has to add up to the spending above it.
-const UNFILED_TONE = "bg-chalk-soft";
-
-const bucketTone = (bucket) => BUCKET_TONES[bucket] ?? UNFILED_TONE;
+// The four bucket colours — and the grey for spending that could not be filed
+// under one — come from `src/bucketTones.js`, which is also what the plan's own
+// split on Configuration and the stacked columns of the plan-against-books
+// chart read. The whole value of those three drawing the same four shares is
+// that a reader carries the colours between them, which a second copy of the
+// map here would eventually break without anything looking wrong in review.
 
 function Tile({ label, figure, tone = "text-chalk", note }) {
   return (
@@ -157,7 +148,7 @@ export default function ReportSummary({ report }) {
                 segments={buckets.map((entry, index) => ({
                   key: entry.bucket ?? "unfiled",
                   weight: weights[index],
-                  tone: bucketTone(entry.bucket),
+                  tone: bucketTone(entry.bucket).swatch,
                 }))}
               />
             )}
@@ -176,7 +167,7 @@ export default function ReportSummary({ report }) {
             {buckets.map((entry) => (
               <div key={entry.bucket ?? "unfiled"} className="flex items-center gap-2">
                 <span
-                  className={`h-2 w-2 shrink-0 ${bucketTone(entry.bucket)}`}
+                  className={`h-2 w-2 shrink-0 ${bucketTone(entry.bucket).swatch}`}
                   aria-hidden="true"
                 />
                 <dt className="font-mono text-label uppercase text-chalk-soft">{entry.label}</dt>

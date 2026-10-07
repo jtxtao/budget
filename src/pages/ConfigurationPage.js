@@ -9,6 +9,7 @@ import BalanceHistoryPanel from "../components/BalanceHistoryPanel";
 import BooksFilePanel from "../components/BooksFilePanel";
 import Button from "../components/Button";
 import CategoryPlanner from "../components/CategoryPlanner";
+import EmergencyFundPanel from "../components/EmergencyFundPanel";
 import ExpectedIncomeTable from "../components/ExpectedIncomeTable";
 import PageHeader from "../components/PageHeader";
 import PayeeList from "../components/PayeeList";
@@ -17,10 +18,12 @@ import PlanHealthSummary from "../components/PlanHealthSummary";
 import PaySchedulePanel from "../components/PaySchedulePanel";
 import { DEFAULT_SCOPE, isOffBudget, useAccounts } from "../contexts/AccountsContext";
 import { useBudgets } from "../contexts/BudgetsContext";
+import { useEmergencyFundPlan } from "../contexts/EmergencyFundContext";
 import { useIncomePlan } from "../contexts/IncomePlanContext";
 import { usePaySchedule } from "../contexts/PayScheduleContext";
 import { useRetirement } from "../contexts/RetirementContext";
 import useAccountBalances from "../hooks/useAccountBalances";
+import useEmergencyFund from "../hooks/useEmergencyFund";
 import useNetWorth from "../hooks/useNetWorth";
 import useNextPaycheck from "../hooks/useNextPaycheck";
 import usePlanHealth from "../hooks/usePlanHealth";
@@ -94,14 +97,19 @@ export default function ConfigurationPage() {
   // Same reason again: the pretax field lives inside Plan health, not beside
   // the categories, so its own rejection message has to stay with it.
   const [pretaxError, setPretaxError] = useState(null);
+  // And again: the fund's two fields are at the foot of the page, and a message
+  // about a month count belongs beside the month count.
+  const [fundError, setFundError] = useState(null);
 
   const { updateBudget, deleteBudget, deleteGroup, setCategoryLayout } = useBudgets();
   const { deleteIncomeSource } = useIncomePlan();
   const { accounts, deleteAccount } = useAccounts();
   const { schedule, setPaySchedule } = usePaySchedule();
   const { plan, setRetirementPlan } = useRetirement();
+  const { setEmergencyFund, toggleFundAccount } = useEmergencyFundPlan();
 
   const health = usePlanHealth();
+  const fund = useEmergencyFund();
   const { period: startingPeriod, poolCentsOverride: startingPoolCents } = useStartingBalances();
   const paycheck = useNextPaycheck();
   // What each account holds as things stand. On-budget figures are the
@@ -199,6 +207,14 @@ export default function ConfigurationPage() {
   // could disagree. Putting it here too is the point: a 401(k) deduction has
   // no category to be typed from, and before this the only door to it was the
   // Retirement page.
+  // The store validates and the panel shows it, the contract every panel on this
+  // page keeps: a swallowed rejection would leave a figure on screen that the
+  // target below it is not using.
+  function handleFundChange(changes) {
+    const result = setEmergencyFund(changes);
+    setFundError(result.ok ? null : result.error);
+  }
+
   function handlePretaxChange(pretaxContributionCents) {
     const result = setRetirementPlan({ pretaxContributionCents });
     setPretaxError(result.ok ? null : result.error);
@@ -339,6 +355,22 @@ export default function ConfigurationPage() {
         </div>
       </div>
 
+      {/* Full width below both columns, because it joins them: the target is a
+          multiple of the left-hand column's essentials estimates and the balance
+          comes out of the right-hand column's accounts, so a panel belonging to
+          both belongs under both. Open rather than folded away like the three
+          panels beneath it — those are opened to set something up, while this
+          carries a figure worth meeting in passing, and a buffer nobody is
+          reminded of is the one most likely to be quietly spent. */}
+      <div className="mt-8">
+        <EmergencyFundPanel
+          fund={fund}
+          error={fundError}
+          onChange={handleFundChange}
+          onToggleAccount={toggleFundAccount}
+        />
+      </div>
+
       {/* Below both columns and closed by default. Backfilling an account's past
           is a one-off — it happens once, when the books are set up from real
           statements — and it wants the full width of the page when it happens,
@@ -346,7 +378,7 @@ export default function ConfigurationPage() {
           accounts column or opened on top of it as a modal. The month a figure
           belongs to is on its own row, which is why a grid of months can live on
           a page that deliberately has no month in its corner. */}
-      <div className="mt-8">
+      <div className="mt-4">
         <BalanceHistoryPanel />
       </div>
 

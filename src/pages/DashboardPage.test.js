@@ -370,3 +370,110 @@ describe("what is due", () => {
     ).toHaveAttribute("href", "/plan");
   });
 });
+
+describe("moving money between categories", () => {
+  /** Rent is funded and underspent; Groceries is funded nothing and overspent. */
+  function seedShortfall() {
+    seed({
+      transactions: [
+        {
+          id: "t1",
+          kind: TRANSACTION_KINDS.OUTFLOW,
+          accountId: "acc1",
+          budgetId: "b1",
+          amountCents: 120000,
+          date: `${PERIOD}-03`,
+          description: "Rent",
+        },
+        {
+          id: "t2",
+          kind: TRANSACTION_KINDS.OUTFLOW,
+          accountId: "acc1",
+          budgetId: "b2",
+          amountCents: 40000,
+          date: `${PERIOD}-04`,
+          description: "Shop",
+        },
+      ],
+      assignments: [{ id: "as1", budgetId: "b1", period: PERIOD, assignedCents: 150000 }],
+    });
+  }
+
+  function amounts() {
+    return {
+      rent: within(row("Rent")).getAllByRole("cell")[0].textContent,
+      groceries: within(row("Groceries")).getAllByRole("cell")[0].textContent,
+    };
+  }
+
+  test("the overspent row opens the move already pointed at covering it", () => {
+    seedShortfall();
+    renderPage();
+
+    // Groceries is $400 in the red, so its own figure is the way to settle it.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cover Groceries out of another category" })
+    );
+
+    expect(screen.getByLabelText("Move to")).toHaveValue("b2");
+    expect(screen.getByLabelText("Amount to move")).toHaveValue("$400");
+  });
+
+  test("a row with money to spare opens the move as the source", () => {
+    seedShortfall();
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Move money out of Rent" }));
+
+    expect(screen.getByLabelText("Move from")).toHaveValue("b1");
+    // Nothing assumed about where it is going or how much.
+    expect(screen.getByLabelText("Move to")).toHaveValue("");
+    expect(screen.getByLabelText("Amount to move")).toHaveValue("");
+  });
+
+  test("it says what each side will be left with before anything is written", () => {
+    seedShortfall();
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Move money out of Rent" }));
+    fireEvent.change(screen.getByLabelText("Move to"), { target: { value: "b2" } });
+    fireEvent.change(screen.getByLabelText("Amount to move"), { target: { value: "300" } });
+
+    const preview = screen.getByRole("status");
+    expect(preview).toHaveTextContent(/Rent.*\$300.*\$0/);
+    // Still short by a hundred, and the figure says so rather than the move
+    // being refused for it.
+    expect(preview).toHaveTextContent(/Groceries.*-\$400.*-\$100/);
+  });
+
+  test("the move lands on both rows and leaves the pool alone", () => {
+    seedShortfall();
+    renderPage();
+
+    const poolBefore = screen.getByText("Available to budget").closest("div").textContent;
+    expect(amounts()).toEqual({ rent: "$300", groceries: "-$400" });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cover Groceries out of another category" })
+    );
+    fireEvent.change(screen.getByLabelText("Move from"), { target: { value: "b1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Move it" }));
+
+    expect(amounts()).toEqual({ rent: "-$100", groceries: "$0" });
+    // The two deltas cancel, so what is left to assign cannot have moved.
+    expect(screen.getByText("Available to budget").closest("div").textContent).toBe(poolBefore);
+  });
+
+  test("a move the store refuses keeps the form open and says why", () => {
+    seedShortfall();
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Move money out of Rent" }));
+    fireEvent.change(screen.getByLabelText("Move to"), { target: { value: "b1" } });
+    fireEvent.change(screen.getByLabelText("Amount to move"), { target: { value: "50" } });
+    fireEvent.click(screen.getByRole("button", { name: "Move it" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("two different categories");
+    expect(amounts()).toEqual({ rent: "$300", groceries: "-$400" });
+  });
+});

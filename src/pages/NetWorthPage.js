@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import Button from "../components/Button";
+import FixDriftModal from "../components/FixDriftModal";
 import HoldingsTable from "../components/HoldingsTable";
 import NetWorthChart from "../components/NetWorthChart";
 import NetWorthSummary from "../components/NetWorthSummary";
@@ -55,6 +56,9 @@ export default function NetWorthPage() {
   const [period, setPeriod] = useState(currentPeriod);
   const [spanKey, setSpanKey] = useState(DEFAULT_CHANGE_RANGE);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  // The holdings row whose statement and ledger figures disagree, and the thing
+  // that says the settle form is open at all.
+  const [settling, setSettling] = useState(null);
 
   const { chartSeries, slices, current, rows, tracked, changes, windowStartPeriod } = useNetWorth(
     period,
@@ -217,7 +221,7 @@ export default function NetWorthPage() {
             </details>
           </section>
 
-          <HoldingsTable rows={rows} period={period} />
+          <HoldingsTable rows={rows} period={period} onFixDrift={setSettling} />
 
           <Placeholder
             title="Asset allocation"
@@ -229,6 +233,13 @@ export default function NetWorthPage() {
           />
         </div>
       )}
+
+      <FixDriftModal
+        show={settling != null}
+        row={settling}
+        period={period}
+        handleClose={() => setSettling(null)}
+      />
 
       <UpdateBalancesModal
         show={showUpdateModal}

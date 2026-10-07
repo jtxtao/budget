@@ -34,7 +34,19 @@ npm run desktop  # the desktop app, against that same dev server
 Accounts are optional and off unless configured: copy `.env.example` to
 `.env.local` and fill in a Supabase project's URL and anon key. With those unset
 the app runs signed out on this machine's own books, which is also how the test
-suite runs it. `supabase/schema.sql` is the whole server side.
+suite runs it. `supabase/schema.sql` is the whole server side — run it once, whole,
+in a new project's SQL editor.
+
+You can sign in with a password or have a one-time link emailed to you. The second
+is for accounts that have no password at all, which is what signing up through
+Google or a magic link elsewhere produces. It needs one setting the schema script
+cannot make for you: the project's **Magic Link** email template must include
+`{{ .Token }}` alongside `{{ .ConfirmationURL }}`, because the desktop app cannot
+open a link and reads the code out of that same email. Editing that template
+requires custom SMTP to be configured first — Supabase fixes the templates on its
+built-in sender, and the stock one carries only the link. The web app is
+unaffected either way. `supabase/schema.sql`'s header lists that and the settings
+beside it.
 
 Built with Create React App (react-scripts 5), React 18, React Router 6 and
 Tailwind CSS 3, packaged with Electron and electron-builder. Linting is CRA's
@@ -103,7 +115,6 @@ dates are shown as "Undated" rather than backfilled with invented history.
 - Investment tracking
 - Monthly and Yearly history, spending by category by month etc.
 - Tax calculator
-- Mobile apps
 
 Feature research behind this roadmap — what users of comparable budgeting apps
 ask for and complain about — is collected in [`docs/feature-research.md`](docs/feature-research.md).
