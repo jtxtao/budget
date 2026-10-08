@@ -425,9 +425,8 @@ function Section({
 
   // "Ungrouped" only means something once there is a group to be outside of.
   // Before that it is the whole list, and heading it with the name of an
-  // exception the user has never met would be noise. It is still rendered when
-  // empty, though — with groups in play it is the one place a category can be
-  // dragged *out* to, and hiding it would strand the last one to leave a group.
+  // exception the user has never met would be noise. Empty, with groups in
+  // play, the planner shows it only during a drag (see the section list).
   const heading = ungrouped && !hasGroups ? "Categories" : section.name;
 
   return (
@@ -502,7 +501,7 @@ function Section({
               {!ungrouped
                 ? "Nothing here yet. Add a category, or drag one in."
                 : hasGroups
-                ? "Nothing outside a group. Drag a category here to take it out of one."
+                ? "Drop a category here to take it out of its group."
                 : "No categories yet."}
             </p>
           ) : (
@@ -557,6 +556,17 @@ export default function CategoryPlanner({
 
   const view = preview ?? sections;
   const groupCount = view.filter((section) => section.groupId != null).length;
+
+  // An empty "Ungrouped" says nothing at rest, so it is hidden. It comes back
+  // while a drag is in flight, because then it is the one place a category can
+  // be dropped to take it out of its group — and it sits last, so appearing
+  // moves nothing above it. With no groups at all it is the whole list, headed
+  // "Categories", and keeps its empty state.
+  const isShown = (section) =>
+    section.groupId != null ||
+    section.budgets.length > 0 ||
+    groupCount === 0 ||
+    draggingId != null;
 
   const draggingAt = draggingId == null ? null : locate(view, draggingId);
   const dragging =
@@ -644,25 +654,25 @@ export default function CategoryPlanner({
           pointer. */}
       <div className="scroll-x">
         <div className="space-y-3 sm:min-w-[29rem]">
-          {view.map((section, index) => (
-          <Section
-            key={sectionId(section.groupId)}
-            section={section}
-            hasGroups={groupCount > 0}
-            onNameChange={onNameChange}
-            onEstimateChange={onEstimateChange}
-            onGoalChange={onGoalChange}
-            onBucketChange={onBucketChange}
-            onDeleteCategory={onDeleteCategory}
-            onAddCategory={onAddCategory}
-            onEditGroup={onEditGroup}
-            onDeleteGroup={onDeleteGroup}
-            onMoveGroup={(groupId, delta) => {
-              const at = view.findIndex((entry) => entry.groupId === groupId);
-              const to = at + delta;
-              if (at === -1 || to < 0 || to >= groupCount) return;
-              onLayoutChange(toLayout(arrayMove(view, at, to)));
-            }}
+          {view.filter(isShown).map((section, index) => (
+            <Section
+              key={sectionId(section.groupId)}
+              section={section}
+              hasGroups={groupCount > 0}
+              onNameChange={onNameChange}
+              onEstimateChange={onEstimateChange}
+              onGoalChange={onGoalChange}
+              onBucketChange={onBucketChange}
+              onDeleteCategory={onDeleteCategory}
+              onAddCategory={onAddCategory}
+              onEditGroup={onEditGroup}
+              onDeleteGroup={onDeleteGroup}
+              onMoveGroup={(groupId, delta) => {
+                const at = view.findIndex((entry) => entry.groupId === groupId);
+                const to = at + delta;
+                if (at === -1 || to < 0 || to >= groupCount) return;
+                onLayoutChange(toLayout(arrayMove(view, at, to)));
+              }}
               canMoveUp={index > 0}
               canMoveDown={index < groupCount - 1}
             />

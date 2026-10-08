@@ -154,3 +154,21 @@ test("what a category is for offers the four buckets and nothing else", () => {
   ]);
   expect(select).toHaveValue(PLAN_BUCKETS.FUN);
 });
+
+test("an empty Ungrouped section is not shown once every category is in a group", () => {
+  const groups = [{ id: "g1", name: "Leisure", bucket: PLAN_BUCKETS.FUN }];
+  renderPlanner({ groups, budgets: [budget({ name: "Cinema", groupId: "g1" })] });
+  expect(screen.queryByRole("heading", { name: "Ungrouped" })).not.toBeInTheDocument();
+});
+
+test("Ungrouped is shown while it holds a category", () => {
+  const groups = [{ id: "g1", name: "Leisure", bucket: PLAN_BUCKETS.FUN }];
+  renderPlanner({ groups, budgets: [budget({ name: "Rent" })] });
+  expect(screen.getByRole("heading", { name: "Ungrouped" })).toBeInTheDocument();
+});
+
+test("with no groups and no categories the list keeps its empty state", () => {
+  renderPlanner();
+  expect(screen.getByRole("heading", { name: "Categories" })).toBeInTheDocument();
+  expect(screen.getByText("No categories yet.")).toBeInTheDocument();
+});
