@@ -16,6 +16,8 @@ import { usePayees } from "../contexts/PayeesContext";
 import { TRANSACTION_KINDS, useTransactions } from "../contexts/TransactionsContext";
 import useAccountBalances from "../hooks/useAccountBalances";
 import { orderPayeesByUse } from "../payeeSearch";
+import useCardOffers from "../hooks/useCardOffers";
+import { OFFER_KINDS, offerNudges } from "../rewards";
 import { amountAtRest, currentPeriod, formatCents, toCents, todayISO } from "../utils";
 
 /**
@@ -92,6 +94,43 @@ import { amountAtRest, currentPeriod, formatCents, toCents, todayISO } from "../
  * the reading did not line up with the books, said above the fields so the
  * person knows which ones to look at before saving.
  */
+/**
+ * One card offer in a sentence, from where this purchase stands against it.
+ *
+ * On the offer's own card it says what the purchase does — the room or the
+ * distance left after it, or that it fills the cap — because that is the
+ * moment to know the next dinner should go back on the usual card. On another
+ * card it names the card that would have counted it, which is the reminder an
+ * issuer's own app never gives.
+ */
+function describeNudge({ row, onCard, afterCents, pastCents }, haveAmount) {
+  const { offer } = row;
+  const name = `“${offer.name}”`;
+  const cap = offer.kind === OFFER_KINDS.CAP;
+  if (!onCard) {
+    const left = cap
+      ? `has ${formatCents(row.remainingCents)} of room left`
+      : `still needs ${formatCents(row.remainingCents)} of spending`;
+    return `${name} on ${row.cardName ?? "another card"} ${left} — this would count there.`;
+  }
+  if (!haveAmount) {
+    return cap
+      ? `Counts towards ${name} — ${formatCents(row.remainingCents)} of room left.`
+      : `Counts towards ${name} — ${formatCents(row.remainingCents)} still to spend.`;
+  }
+  if (cap) {
+    if (pastCents > 0) {
+      return `This fills ${name}; ${formatCents(pastCents)} of it goes past the limit, at the card's ordinary rate.`;
+    }
+    return afterCents === 0
+      ? `This fills ${name} — after it, back to your usual card.`
+      : `Counts towards ${name} — ${formatCents(afterCents)} of room left after this.`;
+  }
+  return afterCents === 0
+    ? `This meets ${name}'s spending target.`
+    : `Counts towards ${name} — ${formatCents(afterCents)} still to spend after this.`;
+}
+
 export default function AddTransactionModal({
   show,
   defaultKind = TRANSACTION_KINDS.OUTFLOW,
@@ -150,6 +189,10 @@ export default function AddTransactionModal({
   // What the last "add another" recorded, said back so a run of entries is not
   // made blind.
   const [lastAdded, setLastAdded] = useState(null);
+  // The category and the date as they stand in their (uncontrolled) fields,
+  // mirrored for the one thing on screen that reads them as they change: the
+  // card-offer reminder. Submit still reads the refs, so there is one answer.
+  const [picked, setPicked] = useState({ budgetId: "", date: "" });
 
   const { addTransaction, transactions } = useTransactions();
   const { accounts } = useAccounts();
@@ -163,6 +206,16 @@ export default function AddTransactionModal({
   // is a note about what the account can cover right now, and a user entering a
   // receipt while looking at March does not want March's figure.
   const { rows: balanceRows } = useAccountBalances(currentPeriod());
+  const offerRows = useCardOffers(todayISO());
+
+  /** Read the category and date back out of their fields, where they differ. */
+  function syncPicked() {
+    const budgetId = budgetIdRef.current?.value ?? "";
+    const date = dateRef.current?.value ?? "";
+    setPicked((previous) =>
+      previous.budgetId === budgetId && previous.date === date ? previous : { budgetId, date }
+    );
+  }
 
   const spendable = accounts.filter(spendsThroughBudget);
   const balanceById = new Map(balanceRows.map((row) => [row.account.id, row.balanceCents]));
@@ -289,6 +342,14 @@ export default function AddTransactionModal({
     if (!pending || !budgetIdRef.current) return;
     if (budgets.some((budget) => budget.id === pending)) budgetIdRef.current.value = pending;
     pendingBudgetRef.current = null;
+  });
+
+  // Written to by the re-seed, a draft, a payee's default and a remount on a
+  // change of direction — none of which fires a change event — so the mirror is
+  // re-read after every render as well as on the form's own `onChange`.
+  // `syncPicked` is a no-op when nothing moved, so this cannot loop.
+  useEffect(() => {
+    syncPicked();
   });
 
   // After "add another", the caret goes back to the top of the form, which is
@@ -495,6 +556,22 @@ export default function AddTransactionModal({
     setEntryCount((count) => count + 1);
   }
 
+  // Running card offers this purchase bears on — the reminder that the card in
+  // hand is filling one, or that another card would have counted it. Money out
+  // only: a refund or a transfer is never what an offer is chasing.
+  const nudges =
+    isOutflow && !blocked
+      ? offerNudges(offerRows, {
+          accountId: fromAccountId,
+          payeeId,
+          budgetIds: splitting ? parts.map((part) => part.budgetId) : [picked.budgetId],
+          date: picked.date,
+          // A division's whole is not what counts towards an offer on one of
+          // its categories, so no "after this" figure is offered for one.
+          amountCents: splitting ? null : totalCents,
+        })
+      : [];
+
   const describe = (account) => `${account.name} — ${formatCents(balanceById.get(account.id) ?? 0)}`;
 
   /** What this pairing does to the plan, in the words the rest of the app uses. */
@@ -572,7 +649,7 @@ export default function AddTransactionModal({
           )}
         </div>
       ) : (
-        <form ref={formRef} onSubmit={handleSubmit}>
+        <form ref={formRef} onSubmit={handleSubmit} onChange={syncPicked}>
           {notes?.length > 0 && (
             <ul
               aria-label="Check before saving"
@@ -702,6 +779,17 @@ export default function AddTransactionModal({
                 {splitting ? "File it all under one category" : "Split it between categories"}
               </Button>
             </div>
+          )}
+          {nudges.length > 0 && (
+            <ul
+              aria-label="Card offers"
+              aria-live="polite"
+              className="-mt-1 mb-5 space-y-1 border-l-2 border-azure py-1 pl-3 pr-3 font-sans text-row text-chalk-soft"
+            >
+              {nudges.map((nudge) => (
+                <li key={nudge.row.offer.id}>{describeNudge(nudge, totalCents != null && !splitting)}</li>
+              ))}
+            </ul>
           )}
           {/* Last of the fields, and after the category, because that is the order
               the questions are actually answered in: who, how much, when, from

@@ -1615,3 +1615,91 @@ describe("entering one after another", () => {
     expect(screen.getByLabelText(/paid from/i)).toHaveValue("acc2");
   });
 });
+
+describe("reminding about card offers", () => {
+  const monthStart = `${todayISO().slice(0, 8)}01`;
+  const OFFER = {
+    id: "o1",
+    name: "9% on dining",
+    kind: "cap",
+    accountId: "card",
+    startDate: monthStart,
+    endDate: null,
+    limitCents: 100000,
+    allSpending: false,
+    budgetIds: ["dining"],
+    payeeIds: [],
+    rateBps: 900,
+    bonusPoints: null,
+    programId: null,
+  };
+
+  function openWith(transactions = []) {
+    seedBudgets([
+      { id: "groceries", name: "Groceries", plannedCents: 0 },
+      { id: "dining", name: "Dining out", plannedCents: 0 },
+    ]);
+    seedAccounts([
+      { id: "chk", name: "Checking" },
+      { id: "card", name: "Sapphire", type: "liability", scope: "credit-card", assetClass: "Other" },
+    ]);
+    localStorage.setItem("transactions", JSON.stringify(transactions));
+    localStorage.setItem("assignments", "[]");
+    localStorage.setItem("rewardsOffers", JSON.stringify([OFFER]));
+    render(
+      <Providers>
+        <TransactionHarness budgetIds={["groceries"]} />
+      </Providers>
+    );
+    fireEvent.click(screen.getByText("open groceries"));
+  }
+
+  const reminder = () => screen.queryByRole("list", { name: "Card offers", hidden: true });
+
+  test("nothing is said until the purchase matches a running offer", () => {
+    openWith();
+    fireEvent.change(screen.getByLabelText(/paid from/i), { target: { value: "chk" } });
+    expect(reminder()).toBeNull();
+
+    fireEvent.change(screen.getByLabelText(/^category$/i), { target: { value: "dining" } });
+    expect(reminder()).toHaveTextContent(
+      "“9% on dining” on Sapphire has $1,000 of room left — this would count there."
+    );
+  });
+
+  test("on the offer's own card it says what the purchase leaves, and when it fills the cap", () => {
+    openWith([
+      {
+        id: "t1",
+        kind: "outflow",
+        accountId: "card",
+        budgetId: "dining",
+        amountCents: 70000,
+        date: todayISO(),
+        description: "",
+        payeeId: null,
+        toAccountId: null,
+        splits: null,
+      },
+    ]);
+    fireEvent.change(screen.getByLabelText(/paid from/i), { target: { value: "card" } });
+    fireEvent.change(screen.getByLabelText(/^category$/i), { target: { value: "dining" } });
+    expect(reminder()).toHaveTextContent("Counts towards “9% on dining” — $300 of room left.");
+
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "120" } });
+    expect(reminder()).toHaveTextContent("$180 of room left after this.");
+
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "350" } });
+    expect(reminder()).toHaveTextContent(
+      "This fills “9% on dining”; $50 of it goes past the limit, at the card's ordinary rate."
+    );
+  });
+
+  test("a purchase dated outside the offer is not reminded about", () => {
+    openWith();
+    fireEvent.change(screen.getByLabelText(/^category$/i), { target: { value: "dining" } });
+    expect(reminder()).not.toBeNull();
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2020-01-01" } });
+    expect(reminder()).toBeNull();
+  });
+});

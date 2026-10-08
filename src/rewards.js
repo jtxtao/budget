@@ -524,3 +524,41 @@ export function nextOfferWindow({ startDate, endDate }) {
     endDate: todayISO(new Date(ey, em - 1, ed + length)),
   };
 }
+
+/**
+ * Which running offers bear on a purchase being entered, for the entry form's
+ * reminder — read off `useCardOffers`' rows, so the room left is the page's own
+ * figure and the two cannot disagree.
+ *
+ * Only an offer that is open on the purchase's date and still has a use for
+ * spending (room under a cap, a target not yet met) is returned, and only
+ * where the purchase matches its mapping in at least one category or by payee.
+ * `onCard` says which way round the reminder reads: this purchase counts, or
+ * another card would have counted it. `afterCents` is the room or distance left
+ * once this purchase lands — only meaningful `onCard`, and floored at zero.
+ */
+export function offerNudges(rows, { accountId, payeeId, budgetIds, date, amountCents }) {
+  if (!date) return [];
+  const ids = budgetIds.filter(Boolean);
+  return rows
+    .filter((row) => row.status === OFFER_STATUS.ACTIVE && !row.reached)
+    .filter(({ offer }) => offer.startDate <= date && (offer.endDate == null || date <= offer.endDate))
+    .filter(
+      ({ offer }) =>
+        legMatches(offer, payeeId ?? null, null) || ids.some((id) => legMatches(offer, null, id))
+    )
+    .map((row) => {
+      const onCard = row.offer.accountId === accountId;
+      const spent = onCard && Number.isInteger(amountCents) && amountCents > 0 ? amountCents : 0;
+      return {
+        row,
+        onCard,
+        afterCents: Math.max(0, row.remainingCents - spent),
+        pastCents:
+          row.offer.kind === OFFER_KINDS.CAP ? Math.max(0, spent - row.remainingCents) : 0,
+      };
+    })
+    // The card being used first: what this purchase does matters more than
+    // what it might have done elsewhere.
+    .sort((a, b) => (a.onCard === b.onCard ? 0 : a.onCard ? -1 : 1));
+}
