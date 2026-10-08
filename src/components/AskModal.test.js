@@ -88,11 +88,22 @@ const reading = (fields) => ({
   ...fields,
 });
 
+/**
+ * Open the dialog and ask, with the bridge's answers delivered **inside**
+ * `act`. Left outside it, the reply's renders go to React's real scheduler, and
+ * the state the form's re-seed effect sets (the account above all) can still
+ * be pending when the next click lands — under load, a save refused for want of
+ * an account the screen already shows.
+ */
 async function askFor(sentence) {
-  fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-  const input = await screen.findByRole("textbox", { name: "What happened?" });
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+  });
+  const input = screen.getByRole("textbox", { name: "What happened?" });
   fireEvent.change(input, { target: { value: sentence } });
-  fireEvent.click(screen.getByRole("button", { name: "Fill in the form" }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Fill in the form" }));
+  });
 }
 
 const stored = (key) => JSON.parse(localStorage.getItem(key));
@@ -119,15 +130,8 @@ test("a sentence opens the transaction form filled in, and nothing lands until i
 
   await askFor("45.20 at Joe's Pizza yesterday for groceries, party");
 
-  // The reply arrives outside any act, so the form's re-seed effect lands a
-  // tick after its title does — wait for the figure, not the dialog.
-  const amount = await screen.findByDisplayValue("$45.20");
+  const amount = screen.getByDisplayValue("$45.20");
   const scope = within(amount.closest("dialog"));
-  // The figure is written through a ref inside the re-seed effect; the state
-  // that same effect sets (the account, the payee) commits on the render after.
-  // Settle that before anything is read or saved, or a click can land between
-  // the two with the account still unset.
-  await act(async () => {});
   expect(scope.getByText("New transaction")).toBeInTheDocument();
   expect(ask).toHaveBeenCalledTimes(1);
   expect(ask.mock.calls[0][0].model).toBe("qwen2.5:7b");
