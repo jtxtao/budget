@@ -285,6 +285,34 @@ describe("sign-out", () => {
     expect(mockAuth.signOut).toHaveBeenCalled();
   });
 
+  // The stores stay mounted for the whole sign-out round trip, so a failed push
+  // re-parking the outbox — or a realtime row from another device — can write
+  // the account's keys back after the first clear. Staged here as the sign-out
+  // call itself writing them, which is the same window.
+  test("books written back during the sign-out call are cleared too", async () => {
+    mockAuth.getSession.mockResolvedValue({
+      data: { session: { user: { id: "u1", email: "jt@example.com" } } },
+    });
+    mockAuth.signOut.mockImplementation(async () => {
+      restoreScope("u1", {
+        pendingSync: { transactions: [{ id: "t1" }] },
+        budgets: [{ id: "b1" }],
+      });
+      return { error: { message: "Failed to fetch" } };
+    });
+
+    const { result } = await mountAuth();
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.signOut();
+    });
+
+    expect(outcome.ok).toBe(false);
+    setStorageScope("u1");
+    expect(readKey("pendingSync")).toBeUndefined();
+    expect(readKey("budgets")).toBeUndefined();
+  });
+
   test("the browser's own unscoped books are left alone", async () => {
     mockAuth.getSession.mockResolvedValue({
       data: { session: { user: { id: "u1", email: "jt@example.com" } } },

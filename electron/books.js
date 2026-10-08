@@ -70,6 +70,25 @@ const TRAILING_MS = 300;
  */
 const MAX_WAIT_MS = 2000;
 
+/**
+ * Owner read and write, and nobody else.
+ *
+ * The default umask leaves a new file readable by every account on the machine
+ * (0644 on most Linux and macOS setups), and this file is a household's whole
+ * ledger in plain JSON. Ignored on Windows, where the profile folder's own ACL
+ * already keeps other users out.
+ */
+const PRIVATE_MODE = 0o600;
+
+/** Applied after the fact as well, since `mode` only counts when a file is created. */
+function makePrivate(file) {
+  try {
+    fs.chmodSync(file, PRIVATE_MODE);
+  } catch {
+    /* not fatal: the books are still better written than not */
+  }
+}
+
 let filePath = null;
 let bakPath = null;
 
@@ -241,6 +260,9 @@ function writeNow() {
       // whole point of taking the copy here rather than at launch.
       try {
         fs.copyFileSync(filePath, bakPath);
+        // A copy keeps the source's mode, which for a file an older build wrote
+        // is the world-readable default.
+        makePrivate(bakPath);
       } catch {
         // No file to back up on a first run, which is not a failure.
       }
@@ -259,7 +281,9 @@ function writeNow() {
     )}\n`;
 
     const tmp = `${filePath}.tmp`;
-    fs.writeFileSync(tmp, payload, "utf8");
+    fs.writeFileSync(tmp, payload, { encoding: "utf8", mode: PRIVATE_MODE });
+    // A temp file left by a crash keeps whatever mode it was created with.
+    makePrivate(tmp);
     fs.renameSync(tmp, filePath);
     dirty = false;
     return { ok: true };

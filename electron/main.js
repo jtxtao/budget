@@ -157,8 +157,11 @@ function serveApp() {
 
     const target = path.normalize(path.join(BUILD_DIR, rel));
     // A traversal out of the build directory is the one way this handler could
-    // turn into "read any file on the disk".
-    if (!target.startsWith(BUILD_DIR)) {
+    // turn into "read any file on the disk". Compared with the separator on,
+    // because a bare prefix also matches a *sibling* whose name begins with
+    // "build" — `buildResources/` sits right beside it, reachable through an
+    // encoded `..%2F` that the URL parser does not fold away.
+    if (!target.startsWith(BUILD_DIR + path.sep)) {
       return new Response("Forbidden", { status: 403 });
     }
 
@@ -182,6 +185,9 @@ function serveApp() {
  * reads at deploy time and a JavaScript file Electron reads at run time.
  */
 function contentSecurityPolicy() {
+  // The dev server is a source in development only; a packaged app has no
+  // business naming localhost in any directive.
+  const devHost = isDev ? " http://localhost:*" : "";
   const connect = [
     "'self'",
     ...(SUPABASE_ORIGIN ? [SUPABASE_ORIGIN, SUPABASE_ORIGIN.replace(/^https:/, "wss:")] : []),
@@ -192,9 +198,9 @@ function contentSecurityPolicy() {
   return [
     `default-src 'self' ${isDev ? "http://localhost:*" : "app:"}`,
     `script-src 'self' ${isDev ? "'unsafe-eval' http://localhost:*" : "app:"}`,
-    "style-src 'self' 'unsafe-inline' app: http://localhost:*",
-    "font-src 'self' app: http://localhost:*",
-    "img-src 'self' data: app: http://localhost:*",
+    `style-src 'self' 'unsafe-inline' app:${devHost}`,
+    `font-src 'self' app:${devHost}`,
+    `img-src 'self' data: app:${devHost}`,
     `connect-src ${connect}`,
     "frame-ancestors 'none'",
     "base-uri 'self'",
@@ -212,18 +218,30 @@ function contentSecurityPolicy() {
  * and only when — there is a session to justify it.
  */
 function guardEgress() {
-  session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
-    const { url } = details;
+  // Compared as parsed origins, never as string prefixes: a prefix test passes
+  // `https://<ref>.supabase.co.attacker.example` and `http://localhost.evil`
+  // straight through, since both begin with the string being allowed.
+  const remoteOrigins = new Set(
+    SUPABASE_ORIGIN ? [SUPABASE_ORIGIN, SUPABASE_ORIGIN.replace(/^https:/, "wss:")] : []
+  );
 
+  session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+    let parsed;
+    try {
+      parsed = new URL(details.url);
+    } catch {
+      callback({ cancel: true });
+      return;
+    }
+
+    const { protocol: scheme, hostname, origin } = parsed;
     const allowed =
-      url.startsWith("app://") ||
-      url.startsWith("devtools://") ||
-      url.startsWith("blob:") ||
-      url.startsWith("data:") ||
-      (isDev && url.startsWith("http://localhost")) ||
-      (isDev && url.startsWith("ws://localhost")) ||
-      (SUPABASE_ORIGIN && url.startsWith(SUPABASE_ORIGIN)) ||
-      (SUPABASE_ORIGIN && url.startsWith(SUPABASE_ORIGIN.replace(/^https:/, "wss:")));
+      scheme === "app:" ||
+      scheme === "devtools:" ||
+      scheme === "blob:" ||
+      scheme === "data:" ||
+      (isDev && (scheme === "http:" || scheme === "ws:") && hostname === "localhost") ||
+      remoteOrigins.has(origin);
 
     callback({ cancel: !allowed });
   });
@@ -411,7 +429,8 @@ function start() {
     if (canceled || !filePath) return { ok: false, canceled: true };
 
     try {
-      await fs.promises.writeFile(filePath, text, "utf8");
+      // Owner-only, like the books file itself: an export is the same ledger.
+      await fs.promises.writeFile(filePath, text, { encoding: "utf8", mode: 0o600 });
       return { ok: true, path: filePath };
     } catch (error) {
       return { ok: false, error: String(error?.message ?? error) };

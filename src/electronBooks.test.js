@@ -355,3 +355,24 @@ describe("the backup", () => {
     expect(exists("books.bak.json")).toBe(false);
   });
 });
+
+describe("who else can read it", () => {
+  // The books are a household's whole ledger in plain JSON, and the default
+  // umask leaves a new file readable by every account on the machine. Windows
+  // has no POSIX mode bits to assert against.
+  const posix = process.platform === "win32" ? it.skip : it;
+  const mode = (name) => fs.statSync(at(name)).mode & 0o777;
+
+  posix("writes the books and the backup readable by their owner only", () => {
+    seed("books.json", { budgets: [{ id: "b1" }] });
+    fs.chmodSync(at("books.json"), 0o644);
+
+    books.load(dir);
+    books.write("budgets", JSON.stringify([{ id: "b2" }]));
+    books.flush();
+
+    expect(mode("books.json")).toBe(0o600);
+    // Copied from a file an older build wrote world-readable.
+    expect(mode("books.bak.json")).toBe(0o600);
+  });
+});

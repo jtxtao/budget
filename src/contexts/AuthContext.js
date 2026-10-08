@@ -212,6 +212,25 @@ function isUnknownAccountError(error) {
   );
 }
 
+/**
+ * Clear the account's books from this device a second time, once the session
+ * has actually ended.
+ *
+ * The first clear, before the sign-out call, cannot be the only one: the store
+ * providers stay mounted for the whole network round trip, and two things can
+ * write the account's keys back into the cache inside it — a queued push whose
+ * retry fails (offline is exactly when a sign-out is slow) re-parks the outbox,
+ * which holds copies of the latest edits, and a realtime row from another
+ * device is restored into the scope it names. Either would leave book content
+ * in a shared browser after the person had signed out. By the time the call
+ * returns the session is gone (supabase-js drops it even when the server could
+ * not be reached), so nothing is left to write the keys back.
+ */
+async function clearAfterSignOut(userId) {
+  clearScope(userId);
+  await flushWrites();
+}
+
 export const AuthProvider = ({ children }) => {
   // Read synchronously, so a returning guest is never shown the sign-in form
   // they already declined — the same reason CHECKING exists for a session.
@@ -502,6 +521,7 @@ export const AuthProvider = ({ children }) => {
     await flushWrites();
 
     const { error } = await supabase.auth.signOut();
+    await clearAfterSignOut(user?.id);
     if (error) return { ok: false, error: describeAuthError(error) };
     return { ok: true };
   }, [user]);
@@ -601,6 +621,7 @@ export const AuthProvider = ({ children }) => {
     await flushWrites();
 
     const { error } = await supabase.auth.signOut();
+    await clearAfterSignOut(id);
     if (error) return { ok: false, error: describeAuthError(error) };
     return { ok: true };
   }, [user]);

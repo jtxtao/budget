@@ -438,6 +438,12 @@ export const SyncProvider = ({ children }) => {
           const row = payload.new ?? payload.old;
           if (!row?.key) return;
 
+          // The session has ended and the render has already moved the cache
+          // to another scope, but this channel is only removed in the commit
+          // after it. A row landing in that gap must not be written back under
+          // an account whose books sign-out has just cleared off this device.
+          if (getStorageScope() !== userId) return;
+
           // A key we are still trying to send is one this device has a newer
           // answer for. Letting the server's copy win here would undo an edit
           // the user can already see on screen.
