@@ -283,10 +283,11 @@ function AccountControl() {
       <SyncBadge state={syncState} />
       {/* `title` rather than a wider column: an address long enough to be
           truncated is still identifiable by its start, and the header must not
-          reflow around it. */}
+          reflow around it. Hidden below `sm`, where it is what pushes the
+          header onto a second line. */}
       <span
         title={email}
-        className="max-w-[16rem] truncate font-mono text-label text-on-canopy-soft"
+        className="hidden max-w-[16rem] truncate sm:block font-mono text-label text-on-canopy-soft"
       >
         {email}
       </span>
