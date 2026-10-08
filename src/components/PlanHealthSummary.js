@@ -70,6 +70,7 @@ export default function PlanHealthSummary({
   plannedCents,
   unplannedCents,
   bucketRows,
+  splitCents = plannedCents,
   sourceCount,
   pretaxMonthlyCents = 0,
   pretaxContributionCents = null,
@@ -193,9 +194,11 @@ export default function PlanHealthSummary({
         </div>
       )}
 
-      {/* Suppressed with nothing planned rather than drawn as thirds of
-          nothing: a split of zero is not a fact about the plan. */}
-      {plannedCents > 0 && (
+      {/* Suppressed with nothing to split rather than drawn as thirds of
+          nothing: a split of zero is not a fact about the plan. What is left
+          to plan counts as savings here (see `usePlanHealth`), so income with
+          nothing planned against it yet is already a split of all savings. */}
+      {splitCents > 0 && (
         <>
           <div className="border-t border-edge px-4 py-3">
             <h3 className="font-mono text-label uppercase text-chalk">Where it goes</h3>
@@ -237,6 +240,12 @@ export default function PlanHealthSummary({
                       miscounted. */}
                   {row.bucket === PLAN_BUCKETS.RETIREMENT && pretaxMonthlyCents > 0 && (
                     <> + {formatCents(pretaxMonthlyCents)} pretax</>
+                  )}
+                  {/* Savings carries what is left to plan by default, so the
+                      row would look miscounted against its categories without
+                      saying so. */}
+                  {row.leftToPlanCents > 0 && (
+                    <> + {formatCents(row.leftToPlanCents)} left to plan</>
                   )}
                 </dd>
               </div>

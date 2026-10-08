@@ -1201,6 +1201,43 @@ describe("what a category is for", () => {
     expect(bucketRows.map((row) => row.categoryCount)).toEqual([1, 1, 1, 0]);
   });
 
+  test("what is left to plan counts as savings in the split, and only while there is some", () => {
+    localStorage.setItem(
+      "incomeSources",
+      JSON.stringify([{ id: "s1", name: "Salary", amountCents: 100000, cadence: "monthly" }])
+    );
+    const { result } = renderPlan();
+
+    act(() => {
+      result.current.addBudget({ name: "Rent", planned: "500", bucket: PLAN_BUCKETS.ESSENTIALS });
+      result.current.addBudget({ name: "Cinema", planned: "100", bucket: PLAN_BUCKETS.FUN });
+      result.current.addBudget({ name: "Holiday", planned: "100", bucket: PLAN_BUCKETS.SAVINGS });
+    });
+
+    // $1,000 in against $700 planned leaves $300, and money not given a job is
+    // money kept — so savings is $400 of the $1,000, while the verdict and the
+    // planned figure above the split are exactly what they were.
+    const health = result.current.health;
+    expect(health.plannedCents).toBe(70000);
+    expect(health.unplannedCents).toBe(30000);
+    expect(health.splitCents).toBe(100000);
+    const savings = health.bucketRows.find((row) => row.bucket === PLAN_BUCKETS.SAVINGS);
+    expect(savings).toMatchObject({ plannedCents: 40000, leftToPlanCents: 30000, categoryCount: 1 });
+    expect(health.bucketRows.map((row) => row.percent)).toEqual([50, 10, 40, 0]);
+
+    // Over-allocated: nothing is left over to save, so the split is the plan's.
+    act(() => {
+      result.current.addBudget({ name: "Car", planned: "500", bucket: PLAN_BUCKETS.ESSENTIALS });
+    });
+    const over = result.current.health;
+    expect(over.unplannedCents).toBe(-20000);
+    expect(over.splitCents).toBe(120000);
+    expect(over.bucketRows.find((row) => row.bucket === PLAN_BUCKETS.SAVINGS)).toMatchObject({
+      plannedCents: 10000,
+      leftToPlanCents: 0,
+    });
+  });
+
   test("a pretax retirement contribution is grossed onto both income and the retirement bucket", () => {
     const { result } = renderPlan();
 

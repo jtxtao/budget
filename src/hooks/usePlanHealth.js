@@ -39,6 +39,16 @@ import { apportion } from "../utils";
  * that second question honestly. So it is added back to both `expectedIncomeCents`
  * and `plannedCents` — as though it were income earned and immediately spent
  * into the retirement bucket, which, functionally, it is.
+ *
+ * **What is left to plan counts as savings in the split, by default.** Income
+ * the plan expects and has not given a job is not spent — it stays in an
+ * account and accumulates, which is what saving is — so leaving it out of the
+ * split would understate the savings share of every plan that is not fully
+ * allocated. It is added to the savings bucket's figure only, never to
+ * `plannedCents` or to "left to plan" itself, so the verdict above the split is
+ * unmoved; and only while it is positive, since an over-allocated plan has
+ * nothing left over to save. The split is then a share of everything expected
+ * in, which is the same whole as what is planned once a plan balances.
  */
 export default function usePlanHealth() {
   const { groups, budgets } = useBudgets();
@@ -70,9 +80,14 @@ export default function usePlanHealth() {
     // `useRetirementProjection` reaches by adding it to that bucket's own sum.
     totals.get(PLAN_BUCKETS.RETIREMENT).cents += pretaxMonthlyCents;
 
-    // The split is a share of what the plan spends, not of what comes in: it has
-    // to be readable before there is any income on file, and the gap between
-    // planned and expected is already the verdict's job.
+    const unplannedCents = expectedIncomeCents - plannedCents;
+    const leftToPlanCents = Math.max(0, unplannedCents);
+    totals.get(PLAN_BUCKETS.SAVINGS).cents += leftToPlanCents;
+    const splitCents = plannedCents + leftToPlanCents;
+
+    // The split is a share of what the plan spends plus whatever is left over
+    // as savings: it has to be readable before there is any income on file, and
+    // the gap below planned is already the verdict's job.
     const percents = apportion(
       PLAN_BUCKET_ORDER.map((bucket) => totals.get(bucket).cents),
       100
@@ -83,9 +98,10 @@ export default function usePlanHealth() {
       label: PLAN_BUCKET_LABELS[bucket],
       plannedCents: totals.get(bucket).cents,
       categoryCount: totals.get(bucket).count,
-      // Null rather than zero when there is nothing planned at all — no share
+      leftToPlanCents: bucket === PLAN_BUCKETS.SAVINGS ? leftToPlanCents : 0,
+      // Null rather than zero when there is nothing to split at all — no share
       // exists yet, which is a different statement from a share of none.
-      percent: plannedCents > 0 ? percents[index] : null,
+      percent: splitCents > 0 ? percents[index] : null,
     }));
 
     return {
@@ -94,7 +110,8 @@ export default function usePlanHealth() {
       incomeRows,
       expectedIncomeCents,
       plannedCents,
-      unplannedCents: expectedIncomeCents - plannedCents,
+      unplannedCents,
+      splitCents,
       pretaxMonthlyCents,
       sourceCount: incomeRows.length,
       groupCount: groups.length,

@@ -243,6 +243,7 @@ export default function ConfigurationPage() {
         plannedCents={health.plannedCents}
         unplannedCents={health.unplannedCents}
         bucketRows={health.bucketRows}
+        splitCents={health.splitCents}
         sourceCount={health.sourceCount}
         pretaxMonthlyCents={health.pretaxMonthlyCents}
         pretaxContributionCents={plan.pretaxContributionCents}
