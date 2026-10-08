@@ -24,6 +24,8 @@
  * about this month's bonus or last month's devaluation.
  */
 
+import { daysBetween, todayISO } from "./utils";
+
 export const PROGRAM_KINDS = {
   BANK: "bank",
   AIRLINE: "airline",
@@ -326,5 +328,199 @@ export function summariseRewards({ balances = [], valuations = {}, trips = [] })
     totalPoints: programs.reduce((sum, row) => sum + row.points, 0),
     // Back in the order the household entered them.
     trips: trips.map((trip) => planned.get(trip.id)),
+  };
+}
+
+/* ---------------------------------------------------------------- card offers */
+
+/**
+ * **A card offer is a promise about spending, and there are two shapes of it.**
+ *
+ *   - **A capped bonus** (`CAP`) — a higher rate on some spending, up to a
+ *     limit: 9% back on dining up to $1,000, a rotating 5% quarter capped at
+ *     $1,500. Progress is room *used up*, and the useful moment is the limit,
+ *     because that is when the household goes back to its usual card.
+ *   - **A spending target** (`TARGET`) — spend at least this much by a date to
+ *     earn a bonus: a sign-up bonus, a retention offer. Progress is distance
+ *     *covered*, and the useful moment is the deadline.
+ *
+ * Both read the same thing off the ledger — the household's own spending, on
+ * one card, inside a window, in the categories (or at the payees) the offer is
+ * mapped to — and differ only in what the figure is measured against and which
+ * side of the limit is good news. A rotating-category card is a capped bonus
+ * per quarter; nothing about it needs a third shape.
+ *
+ * **What counts is decided by the household's categories, not the issuer's.**
+ * An issuer files a purchase by the merchant's code, which the books do not
+ * have and could not check; what the books do have is the category each
+ * purchase was filed under and who it was paid to. So an offer names
+ * categories, payees, or "all spending", and a purchase counts if it matches
+ * any of them. Where the two filings disagree — a café the issuer calls a
+ * grocery — the issuer wins and this is an estimate; the page says so.
+ */
+export const OFFER_KINDS = {
+  CAP: "cap",
+  TARGET: "target",
+};
+
+export const OFFER_KIND_LABELS = {
+  [OFFER_KINDS.CAP]: "Bonus up to a limit",
+  [OFFER_KINDS.TARGET]: "Spend to earn a bonus",
+};
+
+export const OFFER_STATUS = {
+  UPCOMING: "upcoming",
+  ACTIVE: "active",
+  /** A capped bonus with no room left, or a target already met. */
+  DONE: "done",
+  ENDED: "ended",
+};
+
+/** Whether one leg of a record falls under the offer's mapping. */
+function legMatches(offer, payeeId, budgetId) {
+  if (offer.allSpending) return true;
+  if (budgetId != null && offer.budgetIds.includes(budgetId)) return true;
+  return payeeId != null && offer.payeeIds.includes(payeeId);
+}
+
+/**
+ * The legs of a record that bear on an offer, signed: spending positive, a
+ * refund negative.
+ *
+ * Only outflows and inflows. A transfer is never a purchase — paying the card
+ * off is a transfer *into* it, and a cash advance is not what any bonus pays
+ * on — so it is read here as nothing at all, whatever `budgetLegs` makes of it.
+ * An inflow counts only where it names a category: that is a refund, which an
+ * issuer takes back off qualifying spend, while an inflow naming none is
+ * income — a statement credit, cash back redeemed — which an issuer does not.
+ */
+function qualifyingCents(offer, transaction) {
+  const { kind } = transaction;
+  if (kind !== "outflow" && kind !== "inflow") return 0;
+  const parts =
+    Array.isArray(transaction.splits) && transaction.splits.length > 0
+      ? transaction.splits
+      : [{ budgetId: transaction.budgetId, amountCents: transaction.amountCents }];
+  let cents = 0;
+  for (const part of parts) {
+    if (kind === "inflow" && part.budgetId == null) continue;
+    if (!legMatches(offer, transaction.payeeId ?? null, part.budgetId ?? null)) continue;
+    cents += kind === "outflow" ? part.amountCents : -part.amountCents;
+  }
+  return cents;
+}
+
+/**
+ * Where an offer stands as of `today`.
+ *
+ * The window is inclusive at both ends and **stops at today** — a record dated
+ * next week is a plan, not spending, the envelope view's rule for the future.
+ * An undated record is in no window, the spending report's rule: whether it
+ * counts is a question about a date nobody wrote down.
+ *
+ * Records are walked **in date order**, which is what makes `elsewhereCents`
+ * honest. It is matching spending that went on some *other* card while this
+ * offer still had a use for it — room left under a cap, or a target not yet
+ * met — and only a walk in order can tell a dinner bought on the usual card
+ * before the cap filled (a missed bonus) from one bought after (exactly right).
+ * On one day the offer's own card goes first, the generous reading.
+ *
+ * `qualifyingCents` is floored at zero: refunds can outweigh purchases inside a
+ * window, and a negative figure would be a cap with more room than it started
+ * with.
+ */
+export function offerProgress(offer, transactions, today) {
+  const start = offer.startDate;
+  const end = offer.endDate ?? null;
+  const through = end != null && end < today ? end : today;
+
+  let status;
+  if (start > today) status = OFFER_STATUS.UPCOMING;
+  else if (end != null && end < today) status = OFFER_STATUS.ENDED;
+  else status = OFFER_STATUS.ACTIVE;
+
+  const inWindow = transactions
+    .filter((t) => t.date != null && t.date >= start && t.date <= through)
+    .map((t) => ({ t, cents: qualifyingCents(offer, t), onCard: t.accountId === offer.accountId }))
+    .filter((row) => row.cents !== 0)
+    .sort((a, b) => {
+      if (a.t.date !== b.t.date) return a.t.date < b.t.date ? -1 : 1;
+      return a.onCard === b.onCard ? 0 : a.onCard ? -1 : 1;
+    });
+
+  const limit = offer.limitCents;
+  let running = 0;
+  let elsewhere = 0;
+  let purchaseCount = 0;
+  for (const row of inWindow) {
+    if (row.onCard) {
+      running += row.cents;
+      if (row.cents > 0) purchaseCount += 1;
+    } else if (row.cents > 0 && Math.max(0, running) < limit) {
+      // Only as much as there was still a use for: $300 of dinners elsewhere
+      // with $100 of room left is $100 missed, not $300.
+      elsewhere += Math.min(row.cents, limit - Math.max(0, running));
+    }
+  }
+
+  const qualifying = Math.max(0, running);
+  const remainingCents = Math.max(0, limit - qualifying);
+  const reached = remainingCents === 0;
+  if (reached && status === OFFER_STATUS.ACTIVE) status = OFFER_STATUS.DONE;
+
+  const daysLeft = end != null && status !== OFFER_STATUS.ENDED ? daysBetween(today, end) : null;
+
+  // What still has to go on the card each week to make a deadline: the days
+  // left include today, so the last day of the offer is one day, not zero.
+  const perWeekCents =
+    offer.kind === OFFER_KINDS.TARGET && !reached && daysLeft != null && status === OFFER_STATUS.ACTIVE
+      ? Math.ceil((remainingCents * 7) / (daysLeft + 1))
+      : null;
+
+  const earnedCents =
+    offer.kind === OFFER_KINDS.CAP && offer.rateBps != null
+      ? Math.round((Math.min(qualifying, limit) * offer.rateBps) / 10000)
+      : null;
+
+  return {
+    offer,
+    status,
+    qualifyingCents: qualifying,
+    remainingCents,
+    /** Spent past a cap — at the card's ordinary rate, which is the point of knowing. */
+    overCents: offer.kind === OFFER_KINDS.CAP ? Math.max(0, qualifying - limit) : 0,
+    reached,
+    earnedCents,
+    elsewhereCents: elsewhere,
+    purchaseCount,
+    daysLeft,
+    perWeekCents,
+  };
+}
+
+/**
+ * The same offer's next round, for a card whose categories rotate.
+ *
+ * A window that runs from the first of a month to the last of one is stepped
+ * by **whole months** — a calendar quarter is 90, 91 or 92 days, and stepping
+ * by days would drift off the quarter within a year. Anything else is stepped
+ * by its own length in days. An offer with no end has no length to repeat.
+ */
+export function nextOfferWindow({ startDate, endDate }) {
+  if (!startDate || !endDate) return null;
+  const [sy, sm, sd] = startDate.split("-").map(Number);
+  const [ey, em, ed] = endDate.split("-").map(Number);
+  const lastOfMonth = new Date(ey, em, 0).getDate() === ed;
+  if (sd === 1 && lastOfMonth) {
+    const months = (ey - sy) * 12 + (em - sm) + 1;
+    return {
+      startDate: todayISO(new Date(sy, sm - 1 + months, 1)),
+      endDate: todayISO(new Date(ey, em + months, 0)),
+    };
+  }
+  const length = daysBetween(startDate, endDate) + 1;
+  return {
+    startDate: todayISO(new Date(sy, sm - 1, sd + length)),
+    endDate: todayISO(new Date(ey, em - 1, ed + length)),
   };
 }

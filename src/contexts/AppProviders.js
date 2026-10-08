@@ -91,8 +91,9 @@ import { RewardsProvider } from "./RewardsContext";
 // nothing cascades either way. Using one is the page's write, not the store's.
 //
 // Rewards is independent in both directions: points and miles are not money
-// until they are redeemed, so nothing derived from the books reads them, and
-// the store names only programs from the built-in catalog in src/rewards.js.
+// until they are redeemed, so nothing derived from the books reads them. A card
+// offer does name an account, categories and payees, but by id and inert but
+// kept — useCardOffers resolves them, the store never reads them back.
 // Nothing cascades either way, so its position here is free.
 //
 // SavingsGoals is independent of every other store: a goal names no category,

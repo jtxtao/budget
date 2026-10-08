@@ -1070,6 +1070,43 @@ const rewardsTrips = [
   },
 ];
 
+// Two shapes of card offer against the same card: a limited-time dining bonus
+// the card's own spending is filling, and a rotating 5% quarter on groceries —
+// which the household shops for on checking, so the page has a missed bonus to
+// point at.
+const rewardsOffers = [
+  {
+    id: "demo-offer-1",
+    name: "9% back on dining",
+    kind: "cap",
+    accountId: ACC.card,
+    startDate: dateIn(2, 1),
+    endDate: dateIn(-1, 31),
+    limitCents: 100000,
+    allSpending: false,
+    budgetIds: [B.dining],
+    payeeIds: [],
+    rateBps: 900,
+    bonusPoints: null,
+    programId: null,
+  },
+  {
+    id: "demo-offer-2",
+    name: "This quarter's 5%: grocery stores",
+    kind: "cap",
+    accountId: ACC.card,
+    startDate: dateIn(1, 1),
+    endDate: dateIn(-1, 31),
+    limitCents: 150000,
+    allSpending: false,
+    budgetIds: [B.groceries],
+    payeeIds: [],
+    rateBps: 500,
+    bonusPoints: null,
+    programId: null,
+  },
+];
+
 /** The whole household, as the `{ key: value }` snapshot storage speaks in. */
 export function demoBooks() {
   const { rows, giftIds } = buildLedger();
@@ -1099,6 +1136,7 @@ export function demoBooks() {
     rewardsBalances,
     rewardsValuations,
     rewardsTrips,
+    rewardsOffers,
   };
 }
 

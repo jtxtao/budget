@@ -1,20 +1,25 @@
 import { useMemo, useState } from "react";
 import AddRewardBalanceModal from "../components/AddRewardBalanceModal";
+import AddOfferModal from "../components/AddOfferModal";
 import AddTripModal from "../components/AddTripModal";
 import Button from "../components/Button";
+import CardOfferList from "../components/CardOfferList";
 import PageHeader from "../components/PageHeader";
 import { useRewards } from "../contexts/RewardsContext";
+import useCardOffers from "../hooks/useCardOffers";
 import {
   CATALOG,
   PROGRAM_KIND_LABELS,
   PROGRAM_KIND_ORDER,
+  OFFER_STATUS,
   formatPointValue,
+  nextOfferWindow,
   programById,
   summariseRewards,
   toPoints,
   valueOfPointsCents,
 } from "../rewards";
-import { formatCents, formatDateMedium } from "../utils";
+import { formatCents, formatDateMedium, todayISO } from "../utils";
 
 /**
  * Credit card rewards and the trips they are for.
@@ -30,6 +35,13 @@ import { formatCents, formatDateMedium } from "../utils";
  * redeemed, and a valuation is a judgement — so this page has no month on it,
  * no envelope reads it, and net worth does not count it. The `RetirementContext`
  * split: a store of guesses, read by one page.
+ *
+ * **Card offers lead the page, ahead of the points**, because they are the one
+ * part of it that changes what the household does this week — which card to
+ * reach for at dinner. An offer is the only thing here that reads the books
+ * (through `useCardOffers`), and it only reads them: the dining out it counts
+ * is the dining out already on the register, so nothing has to be typed twice
+ * into an issuer's tracker that does not exist.
  *
  * Editing follows the panels elsewhere: the points on a balance and the value
  * of a program commit on **blur**, are keyed on the stored figure so a refused
@@ -399,10 +411,14 @@ export default function RewardsPage() {
     deleteBalance,
     setValuation,
     deleteTrip,
+    deleteOffer,
   } = useRewards();
+  const today = todayISO();
+  const offerRows = useCardOffers(today);
 
   const [balanceModal, setBalanceModal] = useState({ show: false, balance: null });
   const [tripModal, setTripModal] = useState({ show: false, trip: null });
+  const [offerModal, setOfferModal] = useState({ show: false, offer: null, seed: null });
   const [balanceError, setBalanceError] = useState(null);
   const [valueError, setValueError] = useState(null);
 
@@ -427,13 +443,19 @@ export default function RewardsPage() {
   }
 
   const coveredCount = summary.trips.filter((plan) => plan.covered).length;
+  const liveOffers = offerRows.filter((row) => row.status === OFFER_STATUS.ACTIVE).length;
+
+  function repeatOffer(offer) {
+    const { id: _id, ...rest } = offer;
+    setOfferModal({ show: true, offer: null, seed: { ...rest, ...nextOfferWindow(offer) } });
+  }
 
   return (
     <>
       <PageHeader
         eyebrow="Rewards & travel"
         title="Points and miles"
-        description="What your card points, airline miles and hotel points are worth, and the trips you are saving them for. Every program starts on a catalog value — type your own wherever you value a point differently, and every figure on the page follows it. None of this counts towards your budget or net worth."
+        description="Card offers you are working through, what your card points, airline miles and hotel points are worth, and the trips you are saving them for. Every program starts on a catalog value — type your own wherever you value a point differently, and every figure on the page follows it. None of this counts towards your budget or net worth."
         actions={
           <>
             <Button variant="primary" onClick={() => setBalanceModal({ show: true, balance: null })}>
@@ -441,6 +463,12 @@ export default function RewardsPage() {
             </Button>
             <Button variant="outline" onClick={() => setTripModal({ show: true, trip: null })}>
               Plan a trip
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setOfferModal({ show: true, offer: null, seed: null })}
+            >
+              Track an offer
             </Button>
           </>
         }
@@ -461,6 +489,34 @@ export default function RewardsPage() {
             ))}
           </dl>
         </section>
+
+        <Panel
+          id="rewards-offers"
+          title="Card offers"
+          note={offerRows.length > 0 ? `${liveOffers} running` : null}
+        >
+          {offerRows.length === 0 ? (
+            <p className="px-4 py-5 font-sans text-row text-chalk-soft">
+              No offers tracked. Add a bonus your card is running — extra back on dining up to a
+              limit, a rotating quarter, a sign-up bonus's spending target — map it to your own
+              categories, and the spending you already record here counts towards it.
+            </p>
+          ) : (
+            <>
+              <CardOfferList
+                rows={offerRows}
+                onEdit={(offer) => setOfferModal({ show: true, offer, seed: null })}
+                onRepeat={repeatOffer}
+                onDelete={(offer) => deleteOffer({ id: offer.id })}
+              />
+              <p className="border-t border-edge px-4 py-3 font-sans text-row text-chalk-soft">
+                Counted from your register: purchases on the card, in the offer's dates and the
+                categories or payees you mapped it to, less any refunds. Your card decides what
+                qualifies by the kind of shop, so treat these as close, not exact.
+              </p>
+            </>
+          )}
+        </Panel>
 
         <Panel id="rewards-balances" title="Balances">
           {balances.length === 0 ? (
@@ -528,6 +584,12 @@ export default function RewardsPage() {
         show={balanceModal.show}
         balance={balanceModal.balance}
         handleClose={() => setBalanceModal({ show: false, balance: null })}
+      />
+      <AddOfferModal
+        show={offerModal.show}
+        offer={offerModal.offer}
+        seed={offerModal.seed}
+        handleClose={() => setOfferModal({ show: false, offer: null, seed: null })}
       />
       <AddTripModal
         show={tripModal.show}
