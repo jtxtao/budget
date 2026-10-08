@@ -72,6 +72,13 @@ export default function RetirementStartingPoint({
         />
       </div>
 
+      {byAccounts && !plan.accountsStated && (
+        <p className="border-b border-edge px-4 py-3 font-sans text-row text-chalk-soft">
+          Your off-budget investment accounts are counted to start with, at the
+          figures on the net-worth page. Tick or untick any to make the list your own.
+        </p>
+      )}
+
       {byAccounts ? (
         <AccountPicker
           rows={accountRows}

@@ -282,7 +282,13 @@ export default function RetirementPage() {
             selectedCents={inputs.selectedCents}
             error={startingError}
             onChange={commit(setStartingError)}
-            onToggleAccount={toggleRetirementAccount}
+            onToggleAccount={({ accountId, included }) =>
+              toggleRetirementAccount({
+                accountId,
+                included,
+                shown: accountRows.filter((row) => row.included).map((row) => row.account.id),
+              })
+            }
           />
 
           <RetirementAssumptionsPanel

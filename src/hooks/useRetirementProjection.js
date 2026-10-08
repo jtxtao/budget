@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { isOffBudget } from "../contexts/AccountsContext";
 import { PLAN_BUCKETS, useBudgets } from "../contexts/BudgetsContext";
 import { useIncomePlan } from "../contexts/IncomePlanContext";
 import { useLifeEvents } from "../contexts/LifeEventsContext";
@@ -264,12 +265,31 @@ export function projectRetirement({
  * is `useNetWorth`'s, `budgets` the budget store's, and `expectedMonthlyCents`
  * the income plan's: the three readings of the books a plan is applied to.
  */
+/**
+ * Whether a `useNetWorth` row counts as retirement money under this plan.
+ *
+ * Once the household has stated the list, it is their ticks and nothing else.
+ * Until then it is every off-budget asset in the invested band — a 401(k), an
+ * IRA, a brokerage — because those are already entered with their balances on
+ * the plan page, and asking for the same money again as a typed figure is the
+ * double entry this default exists to remove. Off-budget cash (a savings
+ * account kept as a buffer) and property are left out: neither is usually what
+ * somebody means by retirement savings, and either is one tick away.
+ */
+export function retirementAccountIncluded(plan, row) {
+  if (plan.accountsStated) return plan.accountIds.includes(row.account.id);
+  return (
+    isOffBudget(row.account) &&
+    row.account.type === "asset" &&
+    row.band === HOLDING_CLASSES.INVESTED
+  );
+}
+
 export function resolveProjection({ plan, events, rows, budgets, expectedMonthlyCents }) {
-  const included = new Set(plan.accountIds);
   const accountRows = rows.map((row) => ({
     account: row.account,
     valueCents: row.valueCents,
-    included: included.has(row.account.id),
+    included: retirementAccountIncluded(plan, row),
     // Where the figure came from matters here as much as on the net-worth
     // page: an account last valued in March is being counted at March's
     // figure, and a plan built on it should say so.
@@ -341,7 +361,7 @@ export function resolveProjection({ plan, events, rows, budgets, expectedMonthly
         owedCents: Math.max(0, -row.valueCents),
         ...assumption,
       });
-    } else if (byAccounts && included.has(row.account.id)) {
+    } else if (byAccounts && retirementAccountIncluded(plan, row)) {
       pots.retirementCents += row.valueCents;
     } else if (row.band === HOLDING_CLASSES.CASH) {
       pots.cashCents += row.valueCents;

@@ -120,9 +120,14 @@ export const DEFAULT_PLAN = {
   lifeExpectancy: 90,
 
   startingSource: STARTING_SOURCES.ACCOUNTS,
-  // Empty rather than "everything off budget": which accounts are retirement
-  // money is a judgement — a brokerage may be a house deposit — and guessing it
-  // would put a figure on screen the user never agreed to.
+  // Until the household ticks or unticks anything (`accountsStated` false), the
+  // accounts counted are every off-budget investment — the 401(k)s and IRAs
+  // already entered on the plan page, at the figures the net-worth page gives
+  // them — so nobody types their retirement money in twice. `accountIds` is
+  // only read once the list has been stated; the first tick or untick writes
+  // the default out as the starting list and changes it from there, so what is
+  // on screen is never thrown away. See `retirementAccountIncluded`.
+  accountsStated: false,
   accountIds: [],
   startingBalanceCents: null,
 
@@ -240,6 +245,13 @@ export function migratePlan(stored) {
     startingSource: STARTING_SOURCE_VALUES.includes(plan.startingSource)
       ? plan.startingSource
       : DEFAULT_PLAN.startingSource,
+    // Keyed on presence: a plan saved before the default existed stated its
+    // list only if it ticked something — an empty one there was "not chosen
+    // yet", which is now what the default answers.
+    accountsStated:
+      typeof plan.accountsStated === "boolean"
+        ? plan.accountsStated
+        : Array.isArray(plan.accountIds) && plan.accountIds.length > 0,
     accountIds: Array.isArray(plan.accountIds)
       ? [...new Set(plan.accountIds.filter((id) => typeof id === "string"))]
       : [],
@@ -415,6 +427,7 @@ export const RetirementProvider = ({ children }) => {
         // this store reaching into another one, which is the dependency the
         // provider order exists to keep out.
         patch.accountIds = [...new Set(changes.accountIds.filter((id) => typeof id === "string"))];
+        patch.accountsStated = true;
       }
 
       // Functional updater, not the closed-over record: index.js renders under
@@ -426,12 +439,22 @@ export const RetirementProvider = ({ children }) => {
   );
 
   /** Tick or untick one account as retirement money. A mutator of its own so a
-   *  row does not have to know the whole list to change its own state. */
+   *  row does not have to know the whole list to change its own state.
+   *
+   *  `shown` is the list on screen. While the plan is still following the
+   *  default this store cannot compute it — it reads no accounts — so the page
+   *  hands it over, and the first change starts from what the household saw
+   *  ticked rather than from an empty list. */
   const toggleRetirementAccount = useCallback(
-    ({ accountId, included }) => {
+    ({ accountId, included, shown = [] }) => {
       setPlan((previous) => {
-        const rest = previous.accountIds.filter((id) => id !== accountId);
-        return { ...previous, accountIds: included ? [...rest, accountId] : rest };
+        const base = previous.accountsStated ? previous.accountIds : shown;
+        const rest = base.filter((id) => id !== accountId);
+        return {
+          ...previous,
+          accountsStated: true,
+          accountIds: included ? [...rest, accountId] : rest,
+        };
       });
       return { ok: true };
     },

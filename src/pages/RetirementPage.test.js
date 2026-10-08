@@ -127,18 +127,57 @@ describe("the starting point", () => {
     return row.querySelectorAll("td")[2].textContent;
   };
 
-  test("is the accounts that are ticked, and nothing until one is", () => {
+  test("starts on every off-budget investment, with nothing typed", () => {
+    seed({
+      accounts: [
+        account("acc1", "Everyday", "on-budget", 500000),
+        account("acc2", "401(k)", "off-budget", 20000000, "Stocks"),
+        account("acc3", "Brokerage", "off-budget", 10000000, "Stocks"),
+        // Off budget but not retirement money by default: a buffer and a house.
+        account("acc4", "High-yield savings", "off-budget", 3000000, "Cash"),
+        account("acc5", "House", "off-budget", 40000000, "Real estate"),
+      ],
+    });
+    renderPage();
+    statePlan();
+
+    expect(retirementToday()).toBe("$300,000");
+    expect(screen.getByRole("checkbox", { name: "401(k)" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Brokerage" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "High-yield savings" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "House" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Everyday" })).not.toBeChecked();
+  });
+
+  test("the first untick starts from what was on screen, and sticks", () => {
     seed();
     renderPage();
     statePlan();
 
-    expect(retirementToday()).toBe("$0");
-
-    fireEvent.click(screen.getByRole("checkbox", { name: "401(k)" }));
-    expect(retirementToday()).toBe("$200,000");
-
     fireEvent.click(screen.getByRole("checkbox", { name: "Brokerage" }));
-    expect(retirementToday()).toBe("$300,000");
+    expect(retirementToday()).toBe("$200,000");
+    expect(screen.getByRole("checkbox", { name: "401(k)" })).toBeChecked();
+
+    // Unticking the last one is a stated answer of nothing, not a way back to
+    // the default.
+    fireEvent.click(screen.getByRole("checkbox", { name: "401(k)" }));
+    expect(retirementToday()).toBe("$0");
+    expect(JSON.parse(localStorage.getItem("retirementPlan"))).toMatchObject({
+      accountsStated: true,
+      accountIds: [],
+    });
+  });
+
+  test("an account added later joins the default until the list is stated", () => {
+    seed({ accounts: [account("acc2", "401(k)", "off-budget", 20000000, "Stocks")] });
+    // A plan saved before the default existed, with nothing ticked.
+    localStorage.setItem(
+      "retirementPlan",
+      JSON.stringify({ currentAge: 40, retirementAge: 65, accountIds: [] })
+    );
+    renderPage();
+
+    expect(retirementToday()).toBe("$200,000");
   });
 
   test("counts an everyday account too, if that is what the user says", () => {
@@ -147,7 +186,7 @@ describe("the starting point", () => {
     statePlan();
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Everyday" }));
-    expect(retirementToday()).toBe("$5,000");
+    expect(retirementToday()).toBe("$305,000");
   });
 
   test("unticking one takes it back out", () => {
@@ -157,16 +196,16 @@ describe("the starting point", () => {
 
     const holding = screen.getByRole("checkbox", { name: "401(k)" });
     fireEvent.click(holding);
+    expect(retirementToday()).toBe("$100,000");
     fireEvent.click(holding);
-
-    expect(retirementToday()).toBe("$0");
+    expect(retirementToday()).toBe("$300,000");
   });
 
   test("a typed figure replaces the accounts without clearing them", () => {
     seed();
     renderPage();
     statePlan();
-    fireEvent.click(screen.getByRole("checkbox", { name: "401(k)" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Brokerage" }));
 
     fireEvent.click(screen.getByRole("radio", { name: "A balance I enter" }));
     type("Starting balance", "250000");
@@ -177,6 +216,7 @@ describe("the starting point", () => {
     fireEvent.click(screen.getByRole("radio", { name: "The accounts I tick" }));
     expect(retirementToday()).toBe("$200,000");
     expect(screen.getByRole("checkbox", { name: "401(k)" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Brokerage" })).not.toBeChecked();
   });
 
   test("a hand-entered valuation is what the plan counts, not the opening balance", () => {
@@ -188,7 +228,7 @@ describe("the starting point", () => {
     renderPage();
     statePlan();
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "401(k)" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Brokerage" }));
     expect(retirementToday()).toBe("$275,000");
   });
 });
