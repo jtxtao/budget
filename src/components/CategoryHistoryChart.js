@@ -1,9 +1,12 @@
 import { useRef, useState } from "react";
+import useChartWidth from "../hooks/useChartWidth";
 import {
   axisLabels,
   axisTicks,
   barWidthFor,
+  chartFrame,
   columnPath,
+  labelBudget,
   lineRuns,
   movingAverage,
   radiusFor,
@@ -76,7 +79,6 @@ const PLOT = {
   top: PAD.top,
   bottom: VIEW.height - PAD.bottom,
 };
-const PLOT_WIDTH = PLOT.right - PLOT.left;
 const PLOT_HEIGHT = PLOT.bottom - PLOT.top;
 
 function scaleFor(monthly) {
@@ -134,18 +136,26 @@ export default function CategoryHistoryChart({
   coverageStartPeriod = null,
   coverageEndPeriod = null,
 }) {
+  // Drawn at the width of the box it sits in, so the type stays at its real
+  // size on a phone — see `useChartWidth`.
+  const box = useRef(null);
+  const { view, plot, plotWidth } = chartFrame({
+    width: useChartWidth(box),
+    height: VIEW.height,
+    pad: PAD,
+  });
   const [active, setActive] = useState(null);
   const targets = useRef([]);
 
   const { y, ticks } = scaleFor(monthly);
-  const slot = PLOT_WIDTH / monthly.length;
+  const slot = plotWidth / monthly.length;
   const barWidth = barWidthFor(slot, monthly.length);
   const radius = radiusFor(barWidth);
-  const centreOf = (index) => PLOT.left + slot * (index + 0.5);
+  const centreOf = (index) => plot.left + slot * (index + 0.5);
 
   const baseline = y(0);
   const lastIndex = monthly.length - 1;
-  const labels = axisLabels(monthly.map((entry) => entry.period));
+  const labels = axisLabels(monthly.map((entry) => entry.period), labelBudget(plotWidth));
 
   const activeEntry = active != null && active <= lastIndex ? monthly[active] : null;
   const activeIndex = activeEntry ? active : null;
@@ -214,12 +224,12 @@ export default function CategoryHistoryChart({
       )}
 
       <div className="overflow-x-auto px-2 pb-2 pt-3">
-        <div className="relative min-w-[600px]">
+        <div ref={box} className="relative">
           {activeEntry && (
             <div
               className="absolute top-0 z-10"
               style={{
-                left: `${(centreOf(activeIndex) / VIEW.width) * 100}%`,
+                left: `${(centreOf(activeIndex) / view.width) * 100}%`,
                 transform: `translateX(${
                   activeIndex > monthly.length * 0.65
                     ? "-100%"
@@ -234,7 +244,7 @@ export default function CategoryHistoryChart({
           )}
 
           <svg
-            viewBox={`0 0 ${VIEW.width} ${VIEW.height}`}
+            viewBox={`0 0 ${view.width} ${view.height}`}
             className="w-full"
             role="group"
             aria-label="Spending by month for this category"
@@ -242,15 +252,15 @@ export default function CategoryHistoryChart({
             {ticks.map((tick) => (
               <g key={tick}>
                 <line
-                  x1={PLOT.left}
-                  x2={PLOT.right}
+                  x1={plot.left}
+                  x2={plot.right}
                   y1={y(tick)}
                   y2={y(tick)}
                   className="stroke-edge"
                   strokeWidth={1}
                 />
                 <text
-                  x={PLOT.left - 10}
+                  x={plot.left - 10}
                   y={y(tick)}
                   textAnchor="end"
                   dominantBaseline="middle"
@@ -262,8 +272,8 @@ export default function CategoryHistoryChart({
             ))}
 
             <line
-              x1={PLOT.left}
-              x2={PLOT.right}
+              x1={plot.left}
+              x2={plot.right}
               y1={baseline}
               y2={baseline}
               className="stroke-chalk-soft"
@@ -293,8 +303,8 @@ export default function CategoryHistoryChart({
               <line
                 x1={centreOf(activeIndex)}
                 x2={centreOf(activeIndex)}
-                y1={PLOT.top}
-                y2={PLOT.bottom}
+                y1={plot.top}
+                y2={plot.bottom}
                 className="stroke-chalk-soft"
                 strokeWidth={1}
                 strokeOpacity={0.5}
@@ -344,7 +354,7 @@ export default function CategoryHistoryChart({
               <text
                 key={label.period}
                 x={centreOf(label.index)}
-                y={PLOT.bottom + 16}
+                y={plot.bottom + 16}
                 textAnchor="middle"
                 className="fill-chalk-soft font-mono text-label tracking-normal"
               >
@@ -363,8 +373,8 @@ export default function CategoryHistoryChart({
                 ref={(node) => {
                   targets.current[index] = node;
                 }}
-                x={PLOT.left + slot * index}
-                y={PLOT.top}
+                x={plot.left + slot * index}
+                y={plot.top}
                 width={slot}
                 height={PLOT_HEIGHT}
                 fill="transparent"

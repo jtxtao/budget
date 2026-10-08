@@ -1,8 +1,11 @@
 import { useRef, useState } from "react";
+import useChartWidth from "../hooks/useChartWidth";
 import {
   axisLabels,
   axisTicks,
   barWidthFor,
+  chartFrame,
+  labelBudget,
   lineRuns,
   radiusFor,
   stackPaths,
@@ -63,7 +66,6 @@ const PLOT = {
   top: PAD.top,
   bottom: VIEW.height - PAD.bottom,
 };
-const PLOT_WIDTH = PLOT.right - PLOT.left;
 const PLOT_HEIGHT = PLOT.bottom - PLOT.top;
 
 /**
@@ -197,6 +199,14 @@ export default function CashflowChart({
   coverageStartPeriod = null,
   coverageEndPeriod = null,
 }) {
+  // Drawn at the width of the box it sits in, so the type stays at its real
+  // size on a phone — see `useChartWidth`.
+  const box = useRef(null);
+  const { view, plot, plotWidth } = chartFrame({
+    width: useChartWidth(box),
+    height: VIEW.height,
+    pad: PAD,
+  });
   // Which column the pointer or the keyboard is on. Null is a real state, not a
   // missing one — it means the chart is being looked at rather than interrogated.
   const [active, setActive] = useState(null);
@@ -204,10 +214,10 @@ export default function CashflowChart({
   const targets = useRef([]);
 
   const { y, ticks } = scaleFor(series);
-  const slot = PLOT_WIDTH / series.length;
+  const slot = plotWidth / series.length;
   const barWidth = barWidthFor(slot, series.length);
   const radius = radiusFor(barWidth);
-  const centreOf = (index) => PLOT.left + slot * (index + 0.5);
+  const centreOf = (index) => plot.left + slot * (index + 0.5);
 
   const baseline = y(0);
   const lastIndex = series.length - 1;
@@ -232,7 +242,7 @@ export default function CashflowChart({
   let endIndex = lastIndex;
   while (endIndex > 0 && netValues[endIndex] == null) endIndex -= 1;
   const hasEnd = netValues[endIndex] != null;
-  const labels = axisLabels(series.map((entry) => entry.period));
+  const labels = axisLabels(series.map((entry) => entry.period), labelBudget(plotWidth));
 
   // A shorter window can leave the active index past the end of the new series,
   // so it is checked rather than trusted.
@@ -264,15 +274,13 @@ export default function CashflowChart({
         </span>
       </div>
 
-      {/* Scrolls rather than shrinking: the labels have a size below which they
-          stop being labels. */}
-      <div className="overflow-x-auto px-2 pb-2 pt-1">
-        <div className="relative min-w-[600px]">
+      <div className="px-2 pb-2 pt-1">
+        <div ref={box} className="relative">
           {activeEntry && (
             <div
               className="absolute top-0 z-10"
               style={{
-                left: `${(centreOf(activeIndex) / VIEW.width) * 100}%`,
+                left: `${(centreOf(activeIndex) / view.width) * 100}%`,
                 // Pinned by whichever edge keeps it inside the plot, rather than
                 // centred and allowed to hang off the side.
                 transform: `translateX(${
@@ -289,7 +297,7 @@ export default function CashflowChart({
           )}
 
           <svg
-            viewBox={`0 0 ${VIEW.width} ${VIEW.height}`}
+            viewBox={`0 0 ${view.width} ${view.height}`}
             className="w-full"
             role="group"
             aria-label="Income and spending by month"
@@ -299,15 +307,15 @@ export default function CashflowChart({
             {ticks.map((tick) => (
               <g key={tick}>
                 <line
-                  x1={PLOT.left}
-                  x2={PLOT.right}
+                  x1={plot.left}
+                  x2={plot.right}
                   y1={y(tick)}
                   y2={y(tick)}
                   className="stroke-edge"
                   strokeWidth={1}
                 />
                 <text
-                  x={PLOT.left - 10}
+                  x={plot.left - 10}
                   y={y(tick)}
                   textAnchor="end"
                   dominantBaseline="middle"
@@ -321,8 +329,8 @@ export default function CashflowChart({
             {/* Zero is where a month that earned separates from one that spent,
                 so it is drawn a step brighter than the rest of the grid. */}
             <line
-              x1={PLOT.left}
-              x2={PLOT.right}
+              x1={plot.left}
+              x2={plot.right}
               y1={baseline}
               y2={baseline}
               className="stroke-chalk-soft"
@@ -349,8 +357,8 @@ export default function CashflowChart({
               <line
                 x1={centreOf(activeIndex)}
                 x2={centreOf(activeIndex)}
-                y1={PLOT.top}
-                y2={PLOT.bottom}
+                y1={plot.top}
+                y2={plot.bottom}
                 className="stroke-chalk-soft"
                 strokeWidth={1}
                 strokeOpacity={0.5}
@@ -398,7 +406,7 @@ export default function CashflowChart({
               <text
                 key={label.period}
                 x={centreOf(label.index)}
-                y={PLOT.bottom + 16}
+                y={plot.bottom + 16}
                 textAnchor="middle"
                 className="fill-chalk-soft font-mono text-label tracking-normal"
               >
@@ -422,8 +430,8 @@ export default function CashflowChart({
                 ref={(node) => {
                   targets.current[index] = node;
                 }}
-                x={PLOT.left + slot * index}
-                y={PLOT.top}
+                x={plot.left + slot * index}
+                y={plot.top}
                 width={slot}
                 height={PLOT_HEIGHT}
                 fill="transparent"

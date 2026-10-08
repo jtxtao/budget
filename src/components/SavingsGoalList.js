@@ -85,7 +85,7 @@ const rowBg = (striped) => (striped ? "bg-sheet-alt" : "bg-sheet");
  */
 const assignedValue = (row) => (row.assignedCents ? amountEditing(row.assignedCents) : "");
 
-function GoalRow({ row, striped, error, onAssign, onEdit, onDelete }) {
+function GoalRow({ row, period, striped, error, onAssign, onEdit, onDelete }) {
   const ratio = row.targetCents > 0 ? row.availableCents / row.targetCents : 0;
 
   function handleBlur(e) {
@@ -112,17 +112,21 @@ function GoalRow({ row, striped, error, onAssign, onEdit, onDelete }) {
             </div>
           )}
         </th>
-        <td className={`${figureClass} text-ink-soft`}>{formatCents(row.targetCents)}</td>
-        <td className={figureClass}>
-          <div className="font-medium text-ink">{formatCents(row.availableCents)}</div>
-          <div className="mt-1 flex justify-end">
-            <GoalMeter
-              ratio={ratio}
-              label={`${Math.round(Math.min(ratio, 1) * 100)} percent of the way to ${row.name}`}
-            />
+        <td data-label="Target" className={`${figureClass} text-ink-soft`}>
+          {formatCents(row.targetCents)}
+        </td>
+        <td data-label="Available" className={figureClass}>
+          <div>
+            <div className="font-medium text-ink">{formatCents(row.availableCents)}</div>
+            <div className="mt-1 flex justify-end">
+              <GoalMeter
+                ratio={ratio}
+                label={`${Math.round(Math.min(ratio, 1) * 100)} percent of the way to ${row.name}`}
+              />
+            </div>
           </div>
         </td>
-        <td className="px-3 py-2 text-right">
+        <td data-label={formatPeriod(period)} className="px-3 py-2 text-right">
           {/* Keyed on the stored figure, like every other blur-commit field
               here: a rejected edit is put back, and a change made elsewhere
               (there is nowhere else yet, but the contract is the same one
@@ -139,6 +143,7 @@ function GoalRow({ row, striped, error, onAssign, onEdit, onDelete }) {
           />
         </td>
         <td
+          data-label="Remaining"
           className={`${figureClass} ${
             row.remainingCents === 0 ? "font-medium text-verdant" : "text-ink-soft"
           }`}
@@ -212,7 +217,7 @@ export default function SavingsGoalList({ rows, period, onAssign, onEdit, onDele
         </p>
       ) : (
         <div className="scroll-x">
-          <table className="w-full border-collapse">
+          <table className="stack w-full border-collapse">
             <thead>
               <tr className="bg-panel-raised">
                 {COLUMNS.map((column) => (
@@ -227,6 +232,7 @@ export default function SavingsGoalList({ rows, period, onAssign, onEdit, onDele
                 <GoalRow
                   key={row.goalId}
                   row={row}
+                  period={period}
                   striped={index % 2 === 1}
                   error={error?.id === row.goalId ? error.message : null}
                   onAssign={commit}

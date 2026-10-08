@@ -44,13 +44,16 @@ function HoldingRow({ row, period, striped, onFixDrift }) {
       <th scope="row" className="px-4 py-2 text-left font-sans text-row font-normal text-ink">
         {row.account.name}
       </th>
-      <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-row font-medium tabular-nums text-ink">
+      <td
+        data-label="Value"
+        className="whitespace-nowrap px-3 py-2 text-right font-mono text-row font-medium tabular-nums text-ink"
+      >
         {/* Debts read as the amount owed, positive, as they do everywhere else
             the user enters or reads one. The sign lives in the maths, not on
             the page. */}
         {formatCents(owed ? -row.valueCents : row.valueCents)}
       </td>
-      <td className={`whitespace-nowrap text-right font-mono text-label uppercase ${tone}`}>
+      <td data-label="Source" className={`whitespace-nowrap text-right font-mono text-label uppercase ${tone}`}>
         {settleable ? (
           <button
             type="button"
@@ -109,7 +112,7 @@ export default function HoldingsTable({ rows, period, onFixDrift }) {
         </p>
       ) : (
         <div className="scroll-x">
-          <table className="w-full border-collapse">
+          <table className="stack w-full border-collapse">
             <thead>
               <tr className="bg-panel-raised">
                 <th scope="col" className="px-4 py-2 text-left font-mono text-label uppercase text-chalk">

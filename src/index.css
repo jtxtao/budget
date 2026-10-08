@@ -261,6 +261,134 @@ body {
   }
 }
 
+/**
+ * Any other table, as a stack of cards, on a screen too narrow for its columns.
+ *
+ * The register's reflow above is shaped by hand for that one table's cells.
+ * This is the general form, for the tables that are a list of things with a few
+ * figures each — goals, gifts, holdings, the spending ranking, payees,
+ * schedules: below `sm` each row becomes a card whose first cell is its title
+ * and whose other cells are a line each, the column's heading on the left (from
+ * the cell's `data-label`) and the figure on the right, where it was. A cell
+ * with no label is a row of controls and sits at the card's foot, right-aligned.
+ * Where the first cell is not the row's best title — a gift's date leads its
+ * row on a wide screen, but the card is about who it went to — the cell that
+ * is carries `data-stack-title` and is drawn first, and the first cell takes a
+ * `data-label` like any other line.
+ *
+ * Opting in is the class plus a `data-label` on each figure cell, and the
+ * reason it is opt-in rather than a rule for every table is the tables it would
+ * be wrong for: a chart's table twin and the balance grid are read *across* —
+ * a month against the month beside it — and a card per month would turn a
+ * comparison into a scroll. Those keep their own sideways scroll.
+ *
+ * Same cells, same order, same handlers: nothing here changes what a row does,
+ * only where its parts are drawn, so every editing contract and every test that
+ * holds one carries over untouched. That is the register's reasoning, and the
+ * reason this is CSS rather than a second rendering in JavaScript.
+ */
+@media (max-width: 639px) {
+  table.stack,
+  table.stack > tbody,
+  table.stack > tfoot {
+    display: block;
+    width: 100%;
+  }
+
+  /* A column of lines rather than a block, so a cell can be drawn out of its
+     source order with `order` — the title, below. */
+  table.stack > tbody > tr,
+  table.stack > tfoot > tr {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  table.stack > thead {
+    display: none;
+  }
+
+  table.stack > tbody > tr,
+  table.stack > tfoot > tr {
+    padding: 0.375rem 0;
+  }
+
+  table.stack > tbody + tbody > tr:first-child,
+  table.stack > tbody > tr + tr,
+  table.stack > tfoot > tr {
+    border-top: 1px solid rgb(var(--c-rule));
+  }
+
+  table.stack > tbody > tr > *,
+  table.stack > tfoot > tr > * {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    width: auto;
+    max-width: none;
+    padding-top: 0.125rem;
+    padding-bottom: 0.125rem;
+    text-align: right;
+  }
+
+  /* The title line: the row header, or the first cell where there is none. */
+  table.stack > tbody > tr > :first-child:not([data-label]),
+  table.stack > tfoot > tr > :first-child:not([data-label]),
+  table.stack [data-stack-title] {
+    display: block;
+    text-align: left;
+  }
+
+  table.stack [data-stack-title] {
+    order: -1;
+  }
+
+  table.stack [data-label]::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    text-align: left;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.6875rem;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    line-height: 1rem;
+    text-transform: uppercase;
+    color: rgb(var(--c-ink-soft));
+  }
+
+  /* A column of figures right-aligned in a cell of its own keeps doing so when
+     the cell becomes a line, so the figure stays at the card's right edge. */
+  table.stack [data-label] > * {
+    margin-left: auto;
+  }
+
+  /* Controls, and the cells a band or footing leaves empty. */
+  table.stack > tbody > tr > :not(:first-child):not([data-label]):not([data-stack-title]),
+  table.stack > tfoot > tr > :not(:first-child):not([data-label]):not([data-stack-title]) {
+    justify-content: flex-end;
+  }
+
+  table.stack > tbody > tr > :not([data-label]):empty,
+  table.stack > tfoot > tr > :not([data-label]):empty {
+    display: none;
+  }
+
+  /* A band — a group's name and its subtotal — keeps its own shape, the label
+     on the left and the figure after it, which is what it is for. */
+  table.stack > tbody > tr:has(> th[scope="colgroup"]) {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+
+  /* A message under a row says one thing across the card. */
+  table.stack [colspan] {
+    display: block;
+    text-align: left;
+  }
+}
+
 /* A strip that scrolls because it has to, without a scrollbar drawn across the
    page's chrome. Overlay scrollbars already behave this way on the touch
    devices this is for; this is what keeps a desktop browser at a narrow width

@@ -62,12 +62,24 @@ import { formatCents } from "../utils";
  * row to carry a control used on one of them.
  */
 
+/**
+ * `wide` marks a column that only appears from `sm` up. A phone has room for the
+ * name and two figures, so it keeps the two a household acts on in the moment —
+ * what is left, and what this month has done to it — and leaves what was put in
+ * and what the category is saving towards to a wider screen, where they were
+ * always the supporting half of the row. The class rides on every cell of the
+ * column, header, bands and footing alike, off this one list, so no row can
+ * show a column its header has hidden.
+ */
 const COLUMNS = [
   { key: "availableCents", label: "Available" },
-  { key: "budgetedCents", label: "Budgeted" },
+  { key: "budgetedCents", label: "Budgeted", wide: true },
   { key: "activityCents", label: "Activity" },
-  { key: "goalCents", label: "Goal" },
+  { key: "goalCents", label: "Goal", wide: true },
 ];
+
+/** Whole class names, never interpolated — see `bucketTones.js`. */
+const visibility = (column) => (column.wide ? "hidden sm:table-cell" : "");
 
 const headCell = "whitespace-nowrap px-3 py-2 text-right font-mono text-label uppercase text-chalk";
 
@@ -114,7 +126,11 @@ function NameCell({ row }) {
       <span className={short ? `font-medium ${tone.text}` : tone.text}>{row.name}</span>
       <span className="sr-only">, {FUNDING_LABELS[row.funding.status].toLowerCase()}</span>
       {short && (
-        <span className={`ml-2 whitespace-nowrap font-mono text-label tabular-nums ${tone.text}`}>
+        // Its own line on a phone, where the name and two figures already fill
+        // the width; beside the name wherever there is room for it.
+        <span
+          className={`block whitespace-nowrap font-mono text-label tabular-nums sm:ml-2 sm:inline ${tone.text}`}
+        >
           {formatCents(row.funding.shortCents)}{" "}
           {row.funding.status === FUNDING.OVERSPENT ? "over" : "short"}
         </span>
@@ -131,13 +147,13 @@ function NameCell({ row }) {
  * styling — no rule at rest, a rule under the pointer — so it reads as the way
  * that figure is changed rather than as a link to somewhere else.
  */
-function Figure({ cents, tone = "text-ink", onClick, label }) {
+function Figure({ cents, tone = "text-ink", onClick, label, className = "" }) {
   const text = cents == null ? "—" : formatCents(cents);
   // The type treatment is the cell's whatever carries it; only the padding
   // moves onto the button, so the hit area fills the cell.
   const type = `whitespace-nowrap text-right font-mono text-row tabular-nums ${
     cents == null ? "text-ink-soft" : tone
-  }`;
+  } ${className}`;
 
   if (!onClick) return <td className={`${type} px-3 py-2`}>{text}</td>;
 
@@ -194,6 +210,7 @@ function CategoryRow({ row, striped, onMove }) {
             key={column.key}
             cents={cents}
             tone={tone}
+            className={visibility(column)}
             onClick={movable ? () => onMove(row) : undefined}
             // Which way the move goes is decided from the figure, so the label
             // says which rather than leaving the reader to find out by clicking.
@@ -214,7 +231,7 @@ function GroupBand({ name, totals }) {
       {COLUMNS.map((column) => (
         <td
           key={column.key}
-          className="whitespace-nowrap px-3 py-1.5 text-right font-mono text-label tabular-nums text-ink"
+          className={`whitespace-nowrap px-3 py-1.5 text-right font-mono text-label tabular-nums text-ink ${visibility(column)}`}
         >
           {/* A band with nothing saving towards anything leaves the goal column
               blank rather than subtotalling it to zero — the sum arrives null
@@ -320,7 +337,7 @@ export default function CategoryLedgerTable({
                   Category
                 </th>
                 {COLUMNS.map((column) => (
-                  <th key={column.key} scope="col" className={headCell}>
+                  <th key={column.key} scope="col" className={`${headCell} ${visibility(column)}`}>
                     {column.label}
                   </th>
                 ))}
@@ -373,7 +390,7 @@ export default function CategoryLedgerTable({
                 {COLUMNS.map((column) => (
                   <td
                     key={column.key}
-                    className="whitespace-nowrap px-3 py-2 text-right font-mono text-row font-medium tabular-nums text-chalk"
+                    className={`whitespace-nowrap px-3 py-2 text-right font-mono text-row font-medium tabular-nums text-chalk ${visibility(column)}`}
                   >
                     {totals[column.key] == null ? "" : formatCents(totals[column.key])}
                   </td>

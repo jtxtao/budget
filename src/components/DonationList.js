@@ -93,7 +93,9 @@ function DeductibleCell({ row, onCommit, onReject }) {
 
   if (row.returned) {
     return (
-      <td className={`${figureCell} text-ink-soft`}>{formatCents(row.deductibleCents)}</td>
+      <td data-label="Deductible" className={`${figureCell} text-ink-soft`}>
+        {formatCents(row.deductibleCents)}
+      </td>
     );
   }
 
@@ -112,29 +114,31 @@ function DeductibleCell({ row, onCommit, onReject }) {
   }
 
   return (
-    <td className="px-3 py-1">
-      <input
-        type="text"
-        inputMode="decimal"
-        key={row.statedDeductibleCents}
-        defaultValue={display}
-        aria-label={`Deductible amount for ${nameOf(row)}`}
-        onFocus={(event) => {
-          event.target.value = amountEditing(row.statedDeductibleCents);
-          event.target.select();
-        }}
-        onBlur={handleBlur}
-        className={`${figureInput} ${row.clamped ? "text-vermilion-ink" : ""}`}
-      />
-      {/* An amount edited down on the register can leave a deduction stranded
-          above the gift it belongs to. Said on the row rather than repaired in
-          storage: the figure is not wrong, it is out of date, and the claim is
-          the clamped one until it is put right. */}
-      {row.clamped && (
-        <span className="mt-0.5 block text-right font-mono text-label uppercase text-vermilion-ink">
-          {formatCents(row.deductibleCents)} claimed
-        </span>
-      )}
+    <td data-label="Deductible" className="px-3 py-1">
+      <div>
+        <input
+          type="text"
+          inputMode="decimal"
+          key={row.statedDeductibleCents}
+          defaultValue={display}
+          aria-label={`Deductible amount for ${nameOf(row)}`}
+          onFocus={(event) => {
+            event.target.value = amountEditing(row.statedDeductibleCents);
+            event.target.select();
+          }}
+          onBlur={handleBlur}
+          className={`${figureInput} ${row.clamped ? "text-vermilion-ink" : ""}`}
+        />
+        {/* An amount edited down on the register can leave a deduction stranded
+            above the gift it belongs to. Said on the row rather than repaired in
+            storage: the figure is not wrong, it is out of date, and the claim is
+            the clamped one until it is put right. */}
+        {row.clamped && (
+          <span className="mt-0.5 block text-right font-mono text-label uppercase text-vermilion-ink">
+            {formatCents(row.deductibleCents)} claimed
+          </span>
+        )}
+      </div>
     </td>
   );
 }
@@ -149,10 +153,10 @@ function DonationRow({ row, index, recipients, error, onCommit, onReject, onRemo
   return (
     <>
       <tr className={rowBg(index)}>
-        <td className="whitespace-nowrap px-3 py-1 font-mono text-row text-ink-soft">
+        <td data-label="Date" className="whitespace-nowrap px-3 py-1 font-mono text-row text-ink-soft">
           {formatDayShort(row.date)}
         </td>
-        <td className="px-3 py-1">
+        <td data-label="Organization" className="px-3 py-1">
           <select
             value={row.recipientId ?? ""}
             aria-label={`Organization for ${label}`}
@@ -173,7 +177,7 @@ function DonationRow({ row, index, recipients, error, onCommit, onReject, onRemo
         {/* Read-only: who the money went to and any note on it are the ledger's,
             and the register is where they are corrected. The payee leads with the
             note behind it, the order the register stacks them in. */}
-        <td className="truncate px-3 py-1 font-sans text-row text-ink">
+        <td data-stack-title className="truncate px-3 py-1 font-sans text-row text-ink">
           {row.payeeName || row.description || "—"}
           {row.payeeName && row.description && (
             <span className="ml-2 text-ink-soft">{row.description}</span>
@@ -182,9 +186,11 @@ function DonationRow({ row, index, recipients, error, onCommit, onReject, onRemo
             <span className="ml-2 font-mono text-label uppercase text-ink-soft">returned</span>
           )}
         </td>
-        <td className={`${figureCell} font-medium text-ink`}>{formatCents(row.amountCents)}</td>
+        <td data-label="Given" className={`${figureCell} font-medium text-ink`}>
+          {formatCents(row.amountCents)}
+        </td>
         <DeductibleCell row={row} onCommit={onCommit} onReject={onReject} />
-        <td className="px-3 py-1">
+        <td data-label="Receipt" className="px-3 py-1">
           {/* A gift big enough to need a written acknowledgment says so until it
               has one; a smaller one still gets the box, because keeping the
               receipt is a habit rather than a threshold. */}
@@ -278,7 +284,7 @@ export default function DonationList({
         </p>
       ) : (
         <div className="scroll-x">
-          <table className="w-full table-fixed border-collapse">
+          <table className="stack w-full table-fixed border-collapse">
             <thead>
               <tr className="bg-panel-raised">
                 {COLUMNS.map((column) => (
@@ -324,10 +330,16 @@ export default function DonationList({
                 >
                   {year}
                 </th>
-                <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-row font-medium tabular-nums text-chalk">
+                <td
+                  data-label="Given"
+                  className="whitespace-nowrap px-3 py-2 text-right font-mono text-row font-medium tabular-nums text-chalk"
+                >
                   {formatCents(totalCents)}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-row font-medium tabular-nums text-verdant">
+                <td
+                  data-label="Deductible"
+                  className="whitespace-nowrap px-3 py-2 text-right font-mono text-row font-medium tabular-nums text-verdant"
+                >
                   {formatCents(deductibleCents)}
                 </td>
                 <td />

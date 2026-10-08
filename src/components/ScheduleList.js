@@ -131,7 +131,7 @@ export default function ScheduleList() {
             /* Its fixed column widths come to more than a phone is wide, so the
                table scrolls inside the panel rather than taking the page with it. */
             <div className="scroll-x">
-              <table className="w-full table-fixed border-collapse border-t border-edge">
+              <table className="stack w-full table-fixed border-collapse border-t border-edge">
               <thead>
                 <tr className="bg-panel-raised">
                   {/* A width on everything but the actions, so it is the empty
@@ -170,22 +170,27 @@ export default function ScheduleList() {
                           {row.accountName} · {row.categoryName}
                         </div>
                       </td>
-                      <td className="px-3 py-1.5 font-sans text-row text-ink">
-                        {describeRecurrence(row.schedule)}
-                        {row.schedule.endsOn && (
-                          <div className="font-mono text-label uppercase text-ink-soft">
-                            until {formatDateMedium(row.schedule.endsOn)}
-                          </div>
-                        )}
+                      <td data-label="How often" className="px-3 py-1.5 font-sans text-row text-ink">
+                        <div>
+                          {describeRecurrence(row.schedule)}
+                          {row.schedule.endsOn && (
+                            <div className="font-mono text-label uppercase text-ink-soft">
+                              until {formatDateMedium(row.schedule.endsOn)}
+                            </div>
+                          )}
+                        </div>
                       </td>
-                      <td className="px-3 py-1.5 text-right font-mono text-row tabular-nums text-ink">
+                      <td
+                        data-label="Amount"
+                        className="px-3 py-1.5 text-right font-mono text-row tabular-nums text-ink"
+                      >
                         {/* Signed, because there is one column and a scheduled
                             paycheque beside a scheduled bill has to be visibly the
                             other direction. */}
                         {isInflow ? "+" : ""}
                         {formatCents(row.schedule.amountCents)}
                       </td>
-                      <td className="px-3 py-1.5 font-mono text-row tabular-nums text-ink">
+                      <td data-label="Next" className="px-3 py-1.5 font-mono text-row tabular-nums text-ink">
                         {row.next ? (
                           formatDateMedium(row.next)
                         ) : (

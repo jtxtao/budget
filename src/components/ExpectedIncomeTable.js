@@ -53,7 +53,7 @@ export default function ExpectedIncomeTable({
         </p>
       ) : (
         <div className="scroll-x">
-          <table className="w-full border-collapse">
+          <table className="stack w-full border-collapse">
             <thead>
               <tr className="bg-panel-raised">
                 <th scope="col" className="px-4 py-2 text-left font-mono text-label uppercase text-chalk">
@@ -80,18 +80,26 @@ export default function ExpectedIncomeTable({
                 return (
                   <tr key={row.id} className={i % 2 === 0 ? "bg-sheet" : "bg-sheet-alt"}>
                     <td className="px-4 py-2 font-sans text-row text-ink">{row.name}</td>
-                    <td className="whitespace-nowrap px-4 py-2">
-                      <div className="font-sans text-row text-ink-soft">
-                        {cadenceLabel(row.cadence)}
+                    <td data-label="Cadence" className="whitespace-nowrap px-4 py-2">
+                      <div>
+                        <div className="font-sans text-row text-ink-soft">
+                          {cadenceLabel(row.cadence)}
+                        </div>
+                        {note && (
+                          <div className="font-mono text-label uppercase text-ink-soft">{note}</div>
+                        )}
                       </div>
-                      {note && (
-                        <div className="font-mono text-label uppercase text-ink-soft">{note}</div>
-                      )}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2 text-right font-mono text-row tabular-nums text-ink-soft">
+                    <td
+                      data-label="Per payment"
+                      className="whitespace-nowrap px-4 py-2 text-right font-mono text-row tabular-nums text-ink-soft"
+                    >
                       {formatCents(row.amountCents)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2 text-right font-mono text-row font-medium tabular-nums text-ink">
+                    <td
+                      data-label="Per month"
+                      className="whitespace-nowrap px-4 py-2 text-right font-mono text-row font-medium tabular-nums text-ink"
+                    >
                       {formatCents(row.monthlyCents)}
                     </td>
                     <td className="px-4 py-2 text-right">

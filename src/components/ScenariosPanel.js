@@ -41,13 +41,24 @@ function FigureCells({ row }) {
   const atRetirement = netWorth.series.find((point) => point.age === row.retirementAge);
   return (
     <>
-      <td className={cell}>{row.retirementAge ?? "—"}</td>
-      <td className={cell}>{atRetirement ? formatCents(atRetirement.netCents) : "—"}</td>
-      <td className={`${cell} ${short.tone}`}>{short.text}</td>
-      <td className={`${cell} ${outlook.depletionAge != null ? "text-vermilion-ink" : ""}`}>
+      <td data-label="Retire at" className={cell}>
+        {row.retirementAge ?? "—"}
+      </td>
+      <td data-label="Net worth then" className={cell}>
+        {atRetirement ? formatCents(atRetirement.netCents) : "—"}
+      </td>
+      <td data-label="Against the need" className={`${cell} ${short.tone}`}>
+        {short.text}
+      </td>
+      <td
+        data-label="Money lasts to"
+        className={`${cell} ${outlook.depletionAge != null ? "text-vermilion-ink" : ""}`}
+      >
         {lastsTo(outlook)}
       </td>
-      <td className={cell}>{netWorth.ready ? formatCents(netWorth.atEndCents) : "—"}</td>
+      <td data-label="At the end" className={cell}>
+        {netWorth.ready ? formatCents(netWorth.atEndCents) : "—"}
+      </td>
     </>
   );
 }
@@ -127,7 +138,7 @@ export default function ScenariosPanel({
       )}
 
       <div className="scroll-x">
-        <table className="w-full border-collapse" aria-label="Plans compared">
+        <table className="stack w-full border-collapse" aria-label="Plans compared">
           <thead>
             <tr className="bg-panel-raised">
               <th scope="col" className="px-4 py-2 text-left font-mono text-label font-normal uppercase text-chalk">

@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import useChartWidth from "../hooks/useChartWidth";
+import { ageLabeller, chartFrame } from "../chartAxis";
 import { formatCents, formatCompactCents } from "../utils";
 
 /**
@@ -32,7 +34,6 @@ const PLOT = {
   top: PAD.top,
   bottom: VIEW.height - PAD.bottom,
 };
-const PLOT_WIDTH = PLOT.right - PLOT.left;
 const PLOT_HEIGHT = PLOT.bottom - PLOT.top;
 
 /** As in `NetWorthChart`: ticks land on figures people actually say. */
@@ -64,12 +65,6 @@ function scaleFor(series, targetCents) {
   return { y, ticks };
 }
 
-/** Age labels every five years, plus both ends, so the axis never runs to fifty
- *  labels and never leaves the reader without the age they are looking at. */
-function labelled(point, index, series) {
-  return index === 0 || index === series.length - 1 || point.age % 5 === 0;
-}
-
 function Readout({ point, retirementAge }) {
   return (
     <div className="pointer-events-none w-max border border-edge bg-ledger px-3 py-2 shadow-lg shadow-black/50">
@@ -84,13 +79,21 @@ function Readout({ point, retirementAge }) {
 }
 
 export default function RetirementChart({ series, targetCents, retirementAge, depletionAge }) {
+  // Drawn at the width of the box it sits in, so the type stays at its real
+  // size on a phone — see `useChartWidth`.
+  const box = useRef(null);
+  const { view, plot, plotWidth } = chartFrame({
+    width: useChartWidth(box),
+    height: VIEW.height,
+    pad: PAD,
+  });
   // Which year the pointer or the keyboard is on. Null is a real state — the
   // chart is being looked at rather than interrogated.
   const [active, setActive] = useState(null);
 
   const { y, ticks } = scaleFor(series, targetCents);
-  const slot = PLOT_WIDTH / Math.max(1, series.length - 1);
-  const xOf = (index) => PLOT.left + slot * index;
+  const slot = plotWidth / Math.max(1, series.length - 1);
+  const xOf = (index) => plot.left + slot * index;
 
   const baseline = y(0);
   const points = series.map((point, index) => `${xOf(index)},${y(point.balanceCents)}`);
@@ -109,6 +112,9 @@ export default function RetirementChart({ series, targetCents, retirementAge, de
     ].join(" ");
 
   const peak = series.reduce((best, point) => (point.balanceCents > best.balanceCents ? point : best));
+
+  // Every five years where that fits, wider steps on a phone.
+  const labelled = ageLabeller(series.map((point) => point.age), plotWidth);
 
   return (
     <div>
@@ -133,13 +139,13 @@ export default function RetirementChart({ series, targetCents, retirementAge, de
         )}
       </div>
 
-      <div className="overflow-x-auto px-2 pb-2 pt-1">
-        <div className="relative min-w-[600px]">
+      <div className="px-2 pb-2 pt-1">
+        <div ref={box} className="relative">
           {activePoint && (
             <div
               className="absolute top-0 z-10"
               style={{
-                left: `${(xOf(active) / VIEW.width) * 100}%`,
+                left: `${(xOf(active) / view.width) * 100}%`,
                 transform: `translateX(${
                   active > series.length * 0.65 ? "-100%" : active < series.length * 0.35 ? "0" : "-50%"
                 })`,
@@ -150,7 +156,7 @@ export default function RetirementChart({ series, targetCents, retirementAge, de
           )}
 
           <svg
-            viewBox={`0 0 ${VIEW.width} ${VIEW.height}`}
+            viewBox={`0 0 ${view.width} ${view.height}`}
             className="w-full"
             role="group"
             aria-label={`Retirement savings by age, from ${series[0].age} to ${series[lastIndex].age}`}
@@ -158,15 +164,15 @@ export default function RetirementChart({ series, targetCents, retirementAge, de
             {ticks.map((tick) => (
               <g key={tick}>
                 <line
-                  x1={PLOT.left}
-                  x2={PLOT.right}
+                  x1={plot.left}
+                  x2={plot.right}
                   y1={y(tick)}
                   y2={y(tick)}
                   className="stroke-edge"
                   strokeWidth={1}
                 />
                 <text
-                  x={PLOT.left - 10}
+                  x={plot.left - 10}
                   y={y(tick)}
                   textAnchor="end"
                   dominantBaseline="middle"
@@ -187,8 +193,8 @@ export default function RetirementChart({ series, targetCents, retirementAge, de
                 line, and this is the one mark on the page that a reader is meant
                 to measure the curve against. */}
             <line
-              x1={PLOT.left}
-              x2={PLOT.right}
+              x1={plot.left}
+              x2={plot.right}
               y1={y(targetCents)}
               y2={y(targetCents)}
               className="stroke-sulfur"
@@ -196,7 +202,7 @@ export default function RetirementChart({ series, targetCents, retirementAge, de
               strokeDasharray="5 4"
             />
             <text
-              x={PLOT.right + 6}
+              x={plot.right + 6}
               y={y(targetCents)}
               dominantBaseline="middle"
               className="fill-sulfur font-mono text-label tracking-normal tabular-nums"
@@ -210,14 +216,14 @@ export default function RetirementChart({ series, targetCents, retirementAge, de
             <line
               x1={xOf(splitIndex)}
               x2={xOf(splitIndex)}
-              y1={PLOT.top}
-              y2={PLOT.bottom}
+              y1={plot.top}
+              y2={plot.bottom}
               className="stroke-chalk-soft"
               strokeWidth={1}
             />
             <text
               x={xOf(splitIndex) + 5}
-              y={PLOT.top + 2}
+              y={plot.top + 2}
               dominantBaseline="hanging"
               className="fill-chalk-soft font-mono text-label tracking-normal"
             >
@@ -228,8 +234,8 @@ export default function RetirementChart({ series, targetCents, retirementAge, de
               <line
                 x1={xOf(active)}
                 x2={xOf(active)}
-                y1={PLOT.top}
-                y2={PLOT.bottom}
+                y1={plot.top}
+                y2={plot.bottom}
                 className="stroke-chalk-soft"
                 strokeWidth={1}
                 strokeOpacity={0.5}
@@ -277,11 +283,11 @@ export default function RetirementChart({ series, targetCents, retirementAge, de
             </text>
 
             {series.map((point, index) =>
-              labelled(point, index, series) ? (
+              labelled(point.age, index) ? (
                 <text
                   key={point.age}
                   x={xOf(index)}
-                  y={PLOT.bottom + 16}
+                  y={plot.bottom + 16}
                   textAnchor="middle"
                   className="fill-chalk-soft font-mono text-label tracking-normal tabular-nums"
                 >
@@ -297,7 +303,7 @@ export default function RetirementChart({ series, targetCents, retirementAge, de
               <rect
                 key={point.age}
                 x={xOf(index) - slot / 2}
-                y={PLOT.top}
+                y={plot.top}
                 width={slot}
                 height={PLOT_HEIGHT}
                 fill="transparent"

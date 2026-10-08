@@ -130,7 +130,7 @@ export default function PayeeList() {
             /* Its fixed column widths come to more than a phone is wide, so the
                table scrolls inside the panel rather than taking the page with it. */
             <div className="scroll-x">
-              <table className="w-full table-fixed border-collapse border-t border-edge">
+              <table className="stack w-full table-fixed border-collapse border-t border-edge">
               <thead>
                 <tr className="bg-panel-raised">
                   {/* A width on the name and none on the actions, so it is the
@@ -187,7 +187,7 @@ export default function PayeeList() {
                           className={nameClass}
                         />
                       </td>
-                      <td className="px-3 py-1.5">
+                      <td data-label="Usually filed under" className="px-3 py-1.5">
                         <select
                           value={payee.defaultBudgetId ?? ""}
                           aria-label={`Default category for ${payee.name}`}
@@ -211,7 +211,10 @@ export default function PayeeList() {
                           )}
                         </select>
                       </td>
-                      <td className="px-3 py-1.5 text-right font-mono text-row tabular-nums text-ink">
+                      <td
+                        data-label="Rows"
+                        className="px-3 py-1.5 text-right font-mono text-row tabular-nums text-ink"
+                      >
                         {count}
                       </td>
                       <td className="px-1 py-1.5 text-right">

@@ -284,8 +284,10 @@ export default function BalanceHistoryPanel() {
                     &lsaquo; Earlier
                   </Button>
                   {/* Wide enough for two long month names and an en dash, so the
-                      buttons either side do not shuffle as the window moves. */}
-                  <span className="min-w-[15rem] whitespace-nowrap text-center font-mono text-row text-chalk">
+                      buttons either side do not shuffle as the window moves —
+                      from `sm` up. On a phone that width is more than the row
+                      has, so the range wraps between the buttons instead. */}
+                  <span className="min-w-0 text-center font-mono text-row text-chalk sm:min-w-[15rem] sm:whitespace-nowrap">
                     {formatPeriod(start)} – {formatPeriod(end)}
                   </span>
                   <Button

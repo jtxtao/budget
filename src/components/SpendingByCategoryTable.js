@@ -81,6 +81,15 @@ function ShareBar({ cents, maxCents }) {
 const headCell = "whitespace-nowrap px-3 py-2 text-right font-mono text-label uppercase text-chalk";
 const figureCell = "whitespace-nowrap px-3 py-2 text-right font-mono text-row tabular-nums";
 
+// On a phone the ranking keeps the category, what it cost and what that comes
+// to a month — the three that answer the question the table is opened with —
+// and drops the share and the estimate to a wider screen. Every cell of those
+// two columns carries this, header and footing alike, so no row can show a
+// column its header has hidden. An average over the estimate is still marked
+// on the figure that remains, so the one judgement the estimate supported is
+// not lost with it.
+const wideOnly = "hidden sm:table-cell";
+
 function CategoryRow({ row, maxCents, months, striped, selected, onSelect }) {
   // See the note above: over the whole window an estimate can no longer be
   // exceeded by carry-over, so exceeding it says the estimate is wrong.
@@ -113,7 +122,7 @@ function CategoryRow({ row, maxCents, months, striped, selected, onSelect }) {
       {/* The share and its bar are one reading, so they are one cell under one
           heading — a bar in a column of its own needs a heading of its own, and
           the only honest one would repeat the word beside it. */}
-      <td className="w-[22%] px-3 py-2">
+      <td className={`w-[22%] px-3 py-2 ${wideOnly}`}>
         <div className="flex items-center gap-2">
           <span className="w-12 shrink-0 text-right font-mono text-row tabular-nums text-ink-soft">
             {row.shareBps == null ? "—" : formatBps(row.shareBps)}
@@ -126,7 +135,7 @@ function CategoryRow({ row, maxCents, months, striped, selected, onSelect }) {
       </td>
       {/* The plan's intent, in grey and dashed when unset: a category nobody has
           estimated is not a category estimated at zero. */}
-      <td className={`${figureCell} text-ink-soft`}>
+      <td className={`${figureCell} text-ink-soft ${wideOnly}`}>
         {row.targetCents == null ? "—" : formatCents(row.targetCents)}
       </td>
     </tr>
@@ -171,13 +180,16 @@ export default function SpendingByCategoryTable({ report, selectedBudgetId, onSe
                 <th scope="col" className={headCell}>
                   Spent
                 </th>
-                <th scope="col" className="px-3 py-2 text-left font-mono text-label uppercase text-chalk">
+                <th
+                  scope="col"
+                  className={`px-3 py-2 text-left font-mono text-label uppercase text-chalk ${wideOnly}`}
+                >
                   Share
                 </th>
                 <th scope="col" className={headCell}>
                   Per month
                 </th>
-                <th scope="col" className={headCell}>
+                <th scope="col" className={`${headCell} ${wideOnly}`}>
                   Estimate
                 </th>
               </tr>
@@ -207,7 +219,7 @@ export default function SpendingByCategoryTable({ report, selectedBudgetId, onSe
                 <td className={`${figureCell} font-medium text-chalk`}>
                   {formatCents(netSpentCents)}
                 </td>
-                <td className="px-3 py-2">
+                <td className={`px-3 py-2 ${wideOnly}`}>
                   <span className="block w-12 text-right font-mono text-row tabular-nums text-chalk-soft">
                     {netSpentCents > 0 ? formatBps(10000) : "—"}
                   </span>
@@ -215,7 +227,7 @@ export default function SpendingByCategoryTable({ report, selectedBudgetId, onSe
                 <td className={`${figureCell} font-medium text-chalk`}>
                   {formatCents(averageSpendCents)}
                 </td>
-                <td />
+                <td className={wideOnly} />
               </tr>
             </tfoot>
           </table>

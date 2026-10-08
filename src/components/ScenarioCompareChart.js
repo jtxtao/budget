@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { axisTicks } from "../chartAxis";
+import useChartWidth from "../hooks/useChartWidth";
+import { ageLabeller, axisTicks, chartFrame } from "../chartAxis";
 import { formatCents, formatCompactCents } from "../utils";
 
 /**
@@ -30,7 +31,6 @@ const PLOT = {
   top: PAD.top,
   bottom: VIEW.height - PAD.bottom,
 };
-const PLOT_WIDTH = PLOT.right - PLOT.left;
 const PLOT_HEIGHT = PLOT.bottom - PLOT.top;
 
 /** Whole class names, never interpolated — Tailwind reads source for them. */
@@ -67,6 +67,14 @@ function Readout({ age, lines }) {
 }
 
 export default function ScenarioCompareChart({ lines }) {
+  // Drawn at the width of the box it sits in, so the type stays at its real
+  // size on a phone — see `useChartWidth`.
+  const box = useRef(null);
+  const { view, plot, plotWidth } = chartFrame({
+    width: useChartWidth(box),
+    height: VIEW.height,
+    pad: PAD,
+  });
   const [active, setActive] = useState(null);
   const targets = useRef([]);
 
@@ -79,9 +87,9 @@ export default function ScenarioCompareChart({ lines }) {
   const values = drawn.flatMap((line) => line.series.map((point) => point.netCents));
   const { min, max, ticks } = axisTicks(Math.min(0, ...values), Math.max(0, ...values));
 
-  const step = PLOT_WIDTH / Math.max(1, ages.length - 1);
-  const xOf = (age) => PLOT.left + step * (age - firstAge);
-  const y = (cents) => PLOT.bottom - ((cents - min) / (max - min || 1)) * PLOT_HEIGHT;
+  const step = plotWidth / Math.max(1, ages.length - 1);
+  const xOf = (age) => plot.left + step * (age - firstAge);
+  const y = (cents) => plot.bottom - ((cents - min) / (max - min || 1)) * PLOT_HEIGHT;
   const lastIndex = ages.length - 1;
 
   function handleKeyDown(event, index) {
@@ -94,6 +102,9 @@ export default function ScenarioCompareChart({ lines }) {
   // The current plan last, so its ink line sits on top of the scenarios.
   const ordered = [...drawn].sort((a, b) => (a.slot == null) - (b.slot == null));
 
+  // Every five years where that fits, wider steps on a phone.
+  const labelled = ageLabeller(ages, plotWidth);
+
   return (
     <div>
       <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 pt-3" aria-label="Legend">
@@ -105,13 +116,13 @@ export default function ScenarioCompareChart({ lines }) {
         ))}
       </ul>
 
-      <div className="overflow-x-auto px-2 pb-2 pt-1">
-        <div className="relative min-w-[600px]">
+      <div className="px-2 pb-2 pt-1">
+        <div ref={box} className="relative">
           {active != null && (
             <div
               className="absolute top-0 z-10"
               style={{
-                left: `${(xOf(ages[active]) / VIEW.width) * 100}%`,
+                left: `${(xOf(ages[active]) / view.width) * 100}%`,
                 transform: `translateX(${
                   active > ages.length * 0.6 ? "-100%" : active < ages.length * 0.4 ? "0" : "-50%"
                 })`,
@@ -122,7 +133,7 @@ export default function ScenarioCompareChart({ lines }) {
           )}
 
           <svg
-            viewBox={`0 0 ${VIEW.width} ${VIEW.height}`}
+            viewBox={`0 0 ${view.width} ${view.height}`}
             className="w-full"
             role="group"
             aria-label={`Net worth by age under each plan, from ${firstAge} to ${lastAge}`}
@@ -130,15 +141,15 @@ export default function ScenarioCompareChart({ lines }) {
             {ticks.map((tick) => (
               <g key={tick}>
                 <line
-                  x1={PLOT.left}
-                  x2={PLOT.right}
+                  x1={plot.left}
+                  x2={plot.right}
                   y1={y(tick)}
                   y2={y(tick)}
                   className={tick === 0 ? "stroke-chalk-soft" : "stroke-edge"}
                   strokeWidth={1}
                 />
                 <text
-                  x={PLOT.left - 10}
+                  x={plot.left - 10}
                   y={y(tick)}
                   textAnchor="end"
                   dominantBaseline="middle"
@@ -153,8 +164,8 @@ export default function ScenarioCompareChart({ lines }) {
               <line
                 x1={xOf(ages[active])}
                 x2={xOf(ages[active])}
-                y1={PLOT.top}
-                y2={PLOT.bottom}
+                y1={plot.top}
+                y2={plot.bottom}
                 className="stroke-chalk-soft"
                 strokeWidth={1}
                 strokeOpacity={0.5}
@@ -175,11 +186,11 @@ export default function ScenarioCompareChart({ lines }) {
             ))}
 
             {ages.map((age, index) =>
-              index === 0 || index === lastIndex || age % 5 === 0 ? (
+              labelled(age, index) ? (
                 <text
                   key={age}
                   x={xOf(age)}
-                  y={PLOT.bottom + 18}
+                  y={plot.bottom + 18}
                   textAnchor="middle"
                   className="fill-chalk-soft font-mono text-label tracking-normal tabular-nums"
                 >
@@ -195,7 +206,7 @@ export default function ScenarioCompareChart({ lines }) {
                   targets.current[index] = element;
                 }}
                 x={xOf(age) - step / 2}
-                y={PLOT.top}
+                y={plot.top}
                 width={step}
                 height={PLOT_HEIGHT}
                 fill="transparent"

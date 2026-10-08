@@ -71,6 +71,68 @@ const LABEL_STRIDES = [1, 2, 3, 6, 12];
 const MAX_LABELS = 14;
 
 /**
+ * How many month labels a plot this wide can carry without two touching.
+ *
+ * A label is "Nov" over "2025" in the 11px mono face, which wants about forty
+ * pixels of its own. The ceiling is `MAX_LABELS`, so a wide screen labels
+ * exactly as it always did; the floor is three, so even the narrowest phone
+ * still names both ends and something in the middle.
+ */
+export function labelBudget(plotWidth) {
+  return Math.max(3, Math.min(MAX_LABELS, Math.floor(plotWidth / 40)));
+}
+
+/**
+ * Which ages an age axis labels: every `stride` years, plus both ends.
+ *
+ * Five is the stride every age chart has always used and is still the answer
+ * wherever it fits — two-digit ages want about twenty-six pixels each. On a
+ * phone a sixty-year plan at five-year steps is a dozen labels in two hundred
+ * pixels, so the stride widens to ten and then twenty. Once it has widened, a
+ * multiple sitting within half a stride of either end gives way to that end,
+ * since the end is the age the reader is actually looking for; at the old
+ * stride of five nothing is dropped, so a wide screen reads exactly as before.
+ */
+export function ageLabeller(ages, plotWidth) {
+  const count = Math.max(1, ages.length);
+  const stride = [5, 10, 20].find((step) => (count / step) * 26 <= plotWidth) ?? 20;
+  const first = ages[0];
+  const last = ages[ages.length - 1];
+  return (age, index) => {
+    if (index === 0 || index === ages.length - 1) return true;
+    if (age % stride !== 0) return false;
+    if (stride === 5) return true;
+    return age - first >= stride / 2 && last - age >= stride / 2;
+  };
+}
+
+/**
+ * A chart's frame at a given width, in viewBox units.
+ *
+ * Every chart here draws its text at the same size as the page's own — the
+ * `text-label` class is 11 units — so the viewBox has to be as wide as the box
+ * it is drawn in, or a phone shrinks the axis to four-pixel type. `useChartWidth`
+ * measures the box; this turns that width into the plot. The height is fixed
+ * per chart, so the module-level helpers that only read the vertical half of a
+ * frame keep working off their own constants.
+ *
+ * Narrow frames get a slimmer left gutter: a tick reads "$12.5K" at most, and
+ * the sixty-six units a wide chart keeps there are room it can spare and a
+ * phone cannot.
+ */
+export function chartFrame({ width, height, pad }) {
+  const left = width < 560 ? Math.min(pad.left, 54) : pad.left;
+  const view = { width, height };
+  const plot = {
+    left,
+    right: width - pad.right,
+    top: pad.top,
+    bottom: height - pad.bottom,
+  };
+  return { view, plot, plotWidth: plot.right - plot.left };
+}
+
+/**
  * Which columns get a label, counted **back from the most recent** so the right
  * edge is always named — that is the month the reader came for, and an axis that
  * labels the left edge instead leaves the newest figure anonymous.
@@ -79,8 +141,8 @@ const MAX_LABELS = 14;
  * January, because at a stride of six or twelve there may be no January on the
  * axis at all.
  */
-export function axisLabels(periods) {
-  const stride = LABEL_STRIDES.find((step) => periods.length / step <= MAX_LABELS) ?? 12;
+export function axisLabels(periods, maxLabels = MAX_LABELS) {
+  const stride = LABEL_STRIDES.find((step) => periods.length / step <= maxLabels) ?? 12;
 
   const indices = [];
   for (let index = periods.length - 1; index >= 0; index -= stride) indices.push(index);

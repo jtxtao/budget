@@ -1,5 +1,13 @@
 import { useRef, useState } from "react";
-import { axisTicks, barWidthFor, radiusFor, stackPaths } from "../chartAxis";
+import useChartWidth from "../hooks/useChartWidth";
+import {
+  ageLabeller,
+  axisTicks,
+  barWidthFor,
+  chartFrame,
+  radiusFor,
+  stackPaths,
+} from "../chartAxis";
 import { formatCents, formatCompactCents } from "../utils";
 
 /**
@@ -39,7 +47,6 @@ const PLOT = {
   top: PAD.top,
   bottom: VIEW.height - PAD.bottom,
 };
-const PLOT_WIDTH = PLOT.right - PLOT.left;
 const PLOT_HEIGHT = PLOT.bottom - PLOT.top;
 
 /** The series, bottom of the stack first, each with its band's colour. */
@@ -58,9 +65,6 @@ const signed = (point, band) => (band.owed ? -point[band.key] : point[band.key])
 const startsIn = (point, previous) =>
   (point.events ?? []).some((name) => !(previous?.events ?? []).includes(name));
 
-/** Every fifth age, and both ends, so the axis never runs to sixty labels. */
-const labelled = (point, index, series) =>
-  index === 0 || index === series.length - 1 || point.age % 5 === 0;
 
 function Readout({ point, retirementAge }) {
   return (
@@ -95,6 +99,14 @@ function Readout({ point, retirementAge }) {
 }
 
 export default function NetWorthByAgeChart({ series, retirementAge }) {
+  // Drawn at the width of the box it sits in, so the type stays at its real
+  // size on a phone — see `useChartWidth`.
+  const box = useRef(null);
+  const { view, plot, plotWidth } = chartFrame({
+    width: useChartWidth(box),
+    height: VIEW.height,
+    pad: PAD,
+  });
   const [active, setActive] = useState(null);
   const targets = useRef([]);
 
@@ -106,17 +118,17 @@ export default function NetWorthByAgeChart({ series, retirementAge }) {
     BANDS.reduce((sum, band) => sum + Math.min(0, signed(point, band)), 0)
   );
   const { min, max, ticks } = axisTicks(Math.min(0, ...lows), Math.max(0, ...highs));
-  const y = (cents) => PLOT.bottom - ((cents - min) / (max - min || 1)) * PLOT_HEIGHT;
+  const y = (cents) => plot.bottom - ((cents - min) / (max - min || 1)) * PLOT_HEIGHT;
 
-  const slot = PLOT_WIDTH / Math.max(1, series.length);
+  const slot = plotWidth / Math.max(1, series.length);
   const barWidth = barWidthFor(slot, series.length);
   const radius = radiusFor(barWidth);
-  const xOf = (index) => PLOT.left + slot * index + slot / 2;
+  const xOf = (index) => plot.left + slot * index + slot / 2;
 
   const retireIndex = series.findIndex((point) => point.age === retirementAge);
   const activePoint = active == null ? null : series[active];
   const netPoints = series.map((point, index) => `${xOf(index)},${y(point.netCents)}`).join(" ");
-  const markerY = PLOT.bottom + 8;
+  const markerY = plot.bottom + 8;
 
   function handleKeyDown(event, index) {
     const move = { ArrowLeft: -1, ArrowRight: 1, Home: -index, End: lastIndex - index }[event.key];
@@ -124,6 +136,9 @@ export default function NetWorthByAgeChart({ series, retirementAge }) {
     event.preventDefault();
     targets.current[Math.max(0, Math.min(lastIndex, index + move))]?.focus();
   }
+
+  // Every five years where that fits, wider steps on a phone.
+  const labelled = ageLabeller(series.map((point) => point.age), plotWidth);
 
   return (
     <div>
@@ -144,13 +159,13 @@ export default function NetWorthByAgeChart({ series, retirementAge }) {
         </li>
       </ul>
 
-      <div className="overflow-x-auto px-2 pb-2 pt-1">
-        <div className="relative min-w-[600px]">
+      <div className="px-2 pb-2 pt-1">
+        <div ref={box} className="relative">
           {activePoint && (
             <div
               className="absolute top-0 z-10"
               style={{
-                left: `${(xOf(active) / VIEW.width) * 100}%`,
+                left: `${(xOf(active) / view.width) * 100}%`,
                 transform: `translateX(${
                   active > series.length * 0.6 ? "-100%" : active < series.length * 0.4 ? "0" : "-50%"
                 })`,
@@ -161,7 +176,7 @@ export default function NetWorthByAgeChart({ series, retirementAge }) {
           )}
 
           <svg
-            viewBox={`0 0 ${VIEW.width} ${VIEW.height}`}
+            viewBox={`0 0 ${view.width} ${view.height}`}
             className="w-full"
             role="group"
             aria-label={`Projected net worth by age, from ${series[0].age} to ${series[lastIndex].age}`}
@@ -169,15 +184,15 @@ export default function NetWorthByAgeChart({ series, retirementAge }) {
             {ticks.map((tick) => (
               <g key={tick}>
                 <line
-                  x1={PLOT.left}
-                  x2={PLOT.right}
+                  x1={plot.left}
+                  x2={plot.right}
                   y1={y(tick)}
                   y2={y(tick)}
                   className={tick === 0 ? "stroke-chalk-soft" : "stroke-edge"}
                   strokeWidth={1}
                 />
                 <text
-                  x={PLOT.left - 10}
+                  x={plot.left - 10}
                   y={y(tick)}
                   textAnchor="end"
                   dominantBaseline="middle"
@@ -222,14 +237,14 @@ export default function NetWorthByAgeChart({ series, retirementAge }) {
                 <line
                   x1={xOf(retireIndex) - slot / 2}
                   x2={xOf(retireIndex) - slot / 2}
-                  y1={PLOT.top}
-                  y2={PLOT.bottom}
+                  y1={plot.top}
+                  y2={plot.bottom}
                   className="stroke-chalk-soft"
                   strokeWidth={1}
                 />
                 <text
                   x={xOf(retireIndex) - slot / 2 + 5}
-                  y={PLOT.top - 14}
+                  y={plot.top - 14}
                   dominantBaseline="hanging"
                   className="fill-chalk-soft font-mono text-label tracking-normal"
                 >
@@ -282,11 +297,11 @@ export default function NetWorthByAgeChart({ series, retirementAge }) {
             )}
 
             {series.map((point, index) =>
-              labelled(point, index, series) ? (
+              labelled(point.age, index) ? (
                 <text
                   key={point.age}
                   x={xOf(index)}
-                  y={PLOT.bottom + 28}
+                  y={plot.bottom + 28}
                   textAnchor="middle"
                   className="fill-chalk-soft font-mono text-label tracking-normal tabular-nums"
                 >
@@ -298,7 +313,7 @@ export default function NetWorthByAgeChart({ series, retirementAge }) {
             {active != null && (
               <rect
                 x={xOf(active) - slot / 2}
-                y={PLOT.top}
+                y={plot.top}
                 width={slot}
                 height={PLOT_HEIGHT}
                 className="fill-chalk/5"
@@ -313,9 +328,9 @@ export default function NetWorthByAgeChart({ series, retirementAge }) {
                   targets.current[index] = element;
                 }}
                 x={xOf(index) - slot / 2}
-                y={PLOT.top}
+                y={plot.top}
                 width={slot}
-                height={PLOT.bottom + 14 - PLOT.top}
+                height={plot.bottom + 14 - plot.top}
                 fill="transparent"
                 tabIndex={index === (active ?? lastIndex) ? 0 : -1}
                 role="img"

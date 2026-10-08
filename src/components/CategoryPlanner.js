@@ -102,7 +102,30 @@ function GripIcon() {
 
 const rowBg = (index) => (index % 2 === 0 ? "bg-sheet" : "bg-sheet-alt");
 
-const rowClass = (index) => `flex items-center gap-3 px-3 py-2 ${rowBg(index)}`;
+/**
+ * The row's two shapes. From `sm` up it is one line of six fixed columns, as it
+ * always was. On a phone those widths come to more than the screen, and the
+ * column that gives way is the name — the one that matters most — so below `sm`
+ * the row is a grid of two lines instead: the handle, the name and Remove on the
+ * first, the bucket and the two figures under it. Every element carries its
+ * place in that grid (`PLACE`), and grid placement means nothing to a flex
+ * container, so the same classes are inert once the row turns back into one
+ * line. The headings, the rows and the drag overlay all take both, which is
+ * what keeps the three in step at either width.
+ */
+const lineClass =
+  "grid grid-cols-[auto_minmax(0,1fr)_4.75rem_4.75rem] items-center gap-x-3 gap-y-1 sm:flex sm:gap-y-0";
+
+const PLACE = {
+  handle: "col-start-1 row-start-1",
+  name: "col-span-2 col-start-2 row-start-1",
+  remove: "col-start-4 row-start-1 justify-self-end",
+  bucket: "col-span-2 col-start-1 row-start-2",
+  estimate: "col-start-3 row-start-2",
+  goal: "col-start-4 row-start-2",
+};
+
+const rowClass = (index) => `${lineClass} px-3 py-2 ${rowBg(index)}`;
 
 const handleClass =
   "cursor-grab touch-none px-1 py-1 text-ink-soft transition-colors hover:text-ink focus-visible:text-ink focus-visible:outline-none active:cursor-grabbing";
@@ -117,9 +140,9 @@ const handleClass =
 // short figure, and the one that has to survive the page's two-column layout at
 // its narrowest. A bucket is one of three known words and an estimate is rarely
 // past five digits; a category name is whatever the household calls it.
-const bucketClass = "w-32 shrink-0";
+const bucketClass = "w-full shrink-0 sm:w-32";
 
-const figureClass = "w-24 shrink-0 text-right";
+const figureClass = "w-full shrink-0 text-right sm:w-24";
 
 const figureInputClass = `${figureClass} border-0 border-b-2 border-rule bg-transparent px-0 py-1 font-mono text-row tabular-nums text-ink outline-none transition-colors placeholder:text-ink-soft/60 focus:border-azure`;
 
@@ -135,15 +158,23 @@ const figureInputClass = `${figureClass} border-0 border-b-2 border-rule bg-tran
  */
 function ColumnHeadings() {
   return (
-    <div className="flex items-center gap-3 border-b border-rule bg-band px-3 py-1.5 font-mono text-label uppercase text-ink">
-      <span aria-hidden="true" className={`${handleClass} invisible`}>
+    <div
+      className={`${lineClass} border-b border-rule bg-band px-3 py-1.5 font-mono text-label uppercase text-ink`}
+    >
+      <span aria-hidden="true" className={`${handleClass} ${PLACE.handle} invisible`}>
         <GripIcon />
       </span>
-      <span className="min-w-0 flex-1">Category</span>
-      <span className={bucketClass}>What it&rsquo;s for</span>
-      <span className={figureClass}>Estimate</span>
-      <span className={figureClass}>Goal</span>
-      <Button aria-hidden="true" tabIndex={-1} variant="row" size="sm" className="invisible">
+      <span className={`${PLACE.name} min-w-0 flex-1`}>Category</span>
+      <span className={`${bucketClass} ${PLACE.bucket}`}>What it&rsquo;s for</span>
+      <span className={`${figureClass} ${PLACE.estimate}`}>Estimate</span>
+      <span className={`${figureClass} ${PLACE.goal}`}>Goal</span>
+      <Button
+        aria-hidden="true"
+        tabIndex={-1}
+        variant="row"
+        size="sm"
+        className={`${PLACE.remove} invisible`}
+      >
         Remove
       </Button>
     </div>
@@ -275,7 +306,7 @@ function CategoryRow({
         {...attributes}
         {...listeners}
         aria-label={`Reorder ${budget.name}`}
-        className={handleClass}
+        className={`${handleClass} ${PLACE.handle}`}
       >
         <GripIcon />
       </button>
@@ -290,14 +321,14 @@ function CategoryRow({
         defaultValue={budget.name}
         aria-label={`Name of ${budget.name}`}
         onBlur={handleNameBlur}
-        className="min-w-0 flex-1 border-0 border-b-2 border-rule bg-transparent px-0 py-1 font-sans text-row text-ink outline-none transition-colors focus:border-azure"
+        className={`${PLACE.name} min-w-0 flex-1 border-0 border-b-2 border-rule bg-transparent px-0 py-1 font-sans text-row text-ink outline-none transition-colors focus:border-azure`}
       />
 
       <BucketSelect
         value={budget.effectiveBucket}
         onChange={(bucket) => onBucketChange(budget, bucket)}
         label={`What ${budget.name} is for`}
-        className={`${bucketClass} border-0 border-b-2 border-rule px-0 py-1 font-sans text-row text-ink outline-none transition-colors focus:border-azure ${rowBg(
+        className={`${bucketClass} ${PLACE.bucket} border-0 border-b-2 border-rule px-0 py-1 font-sans text-row text-ink outline-none transition-colors focus:border-azure ${rowBg(
           index
         )}`}
       />
@@ -309,7 +340,7 @@ function CategoryRow({
         placeholder="0"
         aria-label={`Monthly estimate for ${budget.name}`}
         onBlur={handleBlur}
-        className={figureInputClass}
+        className={`${figureInputClass} ${PLACE.estimate}`}
       />
 
       {/* Keyed on the stored goal, unlike the estimate beside it: this field has
@@ -324,12 +355,13 @@ function CategoryRow({
         placeholder="None"
         aria-label={`Goal for ${budget.name}`}
         onBlur={handleGoalBlur}
-        className={figureInputClass}
+        className={`${figureInputClass} ${PLACE.goal}`}
       />
 
       <Button
         variant="row"
         size="sm"
+        className={PLACE.remove}
         aria-label={`Remove category: ${budget.name}`}
         onClick={() => onDelete(budget)}
       >
@@ -352,19 +384,21 @@ function CategoryRow({
 function DraggedRow({ budget }) {
   return (
     <div className={`${rowClass(0)} border border-azure shadow-lg`}>
-      <span className={handleClass}>
+      <span className={`${handleClass} ${PLACE.handle}`}>
         <GripIcon />
       </span>
-      <span className="min-w-0 flex-1 truncate font-sans text-row text-ink">{budget.name}</span>
-      <span className={`${bucketClass} pb-1 font-sans text-row text-ink-soft`}>
+      <span className={`${PLACE.name} min-w-0 flex-1 truncate font-sans text-row text-ink`}>
+        {budget.name}
+      </span>
+      <span className={`${bucketClass} ${PLACE.bucket} pb-1 font-sans text-row text-ink-soft`}>
         {PLAN_BUCKET_LABELS[budget.effectiveBucket]}
       </span>
-      <span className={`${figureClass} pb-1 font-mono text-row tabular-nums text-ink`}>
+      <span className={`${figureClass} ${PLACE.estimate} pb-1 font-mono text-row tabular-nums text-ink`}>
         {formatCents(budget.plannedCents)}
       </span>
       {/* A dash, not $0: the row being dragged is not saving towards nothing, it
           is not saving towards anything. */}
-      <span className={`${figureClass} pb-1 font-mono text-row tabular-nums text-ink-soft`}>
+      <span className={`${figureClass} ${PLACE.goal} pb-1 font-mono text-row tabular-nums text-ink-soft`}>
         {budget.goalCents == null ? "—" : formatCents(budget.goalCents)}
       </span>
     </div>
@@ -399,7 +433,7 @@ function Section({
   return (
     <section className={`border ${isOver ? "border-azure" : "border-edge"} bg-panel`}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2 border-b border-edge px-4 py-3">
-        <div className="flex items-baseline gap-3">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
           <h3
             className={`font-sans text-base font-semibold tracking-tight ${
               ungrouped ? "text-chalk-soft" : "text-chalk"
@@ -599,15 +633,17 @@ export default function CategoryPlanner({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      {/* The row's five columns are fixed widths shared with the heading and
-          the drag overlay — that is what keeps the three aligned — and together
-          they come to more than a phone is wide. So the list scrolls sideways
-          inside its own box rather than taking the page with it, and the
-          columns stay in step at every width. The overlay is deliberately
-          *outside* this box: paint containment would make it the containing
-          block for the fixed-position copy that follows the pointer. */}
+      {/* From `sm` up the row's columns are fixed widths shared with the
+          heading and the drag overlay — that is what keeps the three aligned —
+          and in the plan's narrower column they can still come to more than
+          the box is wide, so the list scrolls sideways inside its own box
+          rather than taking the page with it. Below `sm` every row folds onto
+          two lines instead (see `lineClass`) and nothing scrolls. The overlay
+          is deliberately *outside* this box: paint containment would make it
+          the containing block for the fixed-position copy that follows the
+          pointer. */}
       <div className="scroll-x">
-        <div className="min-w-[29rem] space-y-3">
+        <div className="space-y-3 sm:min-w-[29rem]">
           {view.map((section, index) => (
           <Section
             key={sectionId(section.groupId)}

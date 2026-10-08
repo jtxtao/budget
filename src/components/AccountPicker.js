@@ -90,10 +90,14 @@ function AccountRow({ row, striped, onToggle, onPortionChange }) {
           <span>{row.account.name}</span>
         </label>
       </th>
-      <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-label uppercase text-ink-soft">
+      <td
+        data-label="Source"
+        className="whitespace-nowrap px-3 py-2 text-right font-mono text-label uppercase text-ink-soft"
+      >
         {scopeLabel(row.account)} · {sourceNote(row)}
       </td>
       <td
+        data-label="Value"
         className={`whitespace-nowrap px-3 py-2 text-right font-mono text-row tabular-nums ${
           row.included ? "font-medium text-ink" : "text-ink-soft"
         }`}
@@ -101,7 +105,7 @@ function AccountRow({ row, striped, onToggle, onPortionChange }) {
         {formatCents(row.valueCents)}
       </td>
       {onPortionChange && (
-        <td className="whitespace-nowrap px-3 py-2 text-right">
+        <td data-label="Counted" className="whitespace-nowrap px-3 py-2 text-right">
           <PortionField row={row} onPortionChange={onPortionChange} />
         </td>
       )}
@@ -136,7 +140,7 @@ export default function AccountPicker({
 
   return (
     <div className="scroll-x">
-      <table className="w-full border-collapse">
+      <table className="stack w-full border-collapse">
         <thead>
           <tr className="bg-panel-raised">
             <th scope="col" className="px-4 py-2 text-left font-mono text-label uppercase text-chalk">

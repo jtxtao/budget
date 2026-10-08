@@ -87,7 +87,7 @@ function BalancesTable({ balances, valuations, resolve, onPoints, onEdit, onDele
 
   return (
     <div className="relative scroll-x">
-      <table className="w-full border-collapse">
+      <table className="stack w-full border-collapse">
         <thead>
           <tr className="bg-panel-raised">
             <th scope="col" className={`${headCell} text-left`}>
@@ -134,7 +134,7 @@ function BalancesTable({ balances, valuations, resolve, onPoints, onEdit, onDele
                           .join(" · ")}
                       </div>
                     </th>
-                    <td className={numberCell}>
+                    <td data-label="Points" className={numberCell}>
                       <input
                         key={`points-${balance.id}-${balance.points}`}
                         type="text"
@@ -153,13 +153,13 @@ function BalancesTable({ balances, valuations, resolve, onPoints, onEdit, onDele
                         }}
                       />
                     </td>
-                    <td className={`${numberCell} text-ink-soft`}>
+                    <td data-label="Per point" className={`${numberCell} text-ink-soft`}>
                       {formatPointValue(per100)}
                       {valuations[program.id] != null && (
                         <span className="sr-only"> (your value)</span>
                       )}
                     </td>
-                    <td className={`${numberCell} font-medium text-ink`}>
+                    <td data-label="Worth" className={`${numberCell} font-medium text-ink`}>
                       {formatCents(valueOfPointsCents(balance.points, per100))}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right">
@@ -203,7 +203,10 @@ function ValuationsTable({ valuations, heldPoints, onValue }) {
             <th scope="col" className={`${headCell} text-left`}>
               Program
             </th>
-            <th scope="col" className={`${headCell} text-right`}>
+            {/* Not on a phone: the catalog's figure is already the placeholder
+                in the field beside it, and dropping it is what lets this list
+                stay one line per program rather than becoming thirty cards. */}
+            <th scope="col" className={`${headCell} hidden text-right sm:table-cell`}>
               Catalog value
             </th>
             <th scope="col" className={`${headCell} text-right`}>
@@ -233,7 +236,7 @@ function ValuationsTable({ valuations, heldPoints, onValue }) {
                   <th scope="row" className="px-3 py-2 text-left font-sans text-row font-normal text-ink">
                     {program.name}
                   </th>
-                  <td className={`${numberCell} text-ink-soft`}>
+                  <td className={`${numberCell} hidden text-ink-soft sm:table-cell`}>
                     {formatPointValue(program.valuePer100Cents)}
                   </td>
                   <td className={numberCell}>
@@ -286,7 +289,7 @@ function fundingSentence(plan) {
 function TripsTable({ plans, onEdit, onDelete }) {
   return (
     <div className="relative scroll-x">
-      <table className="w-full border-collapse">
+      <table className="stack w-full border-collapse">
         <thead>
           <tr className="bg-panel-raised">
             <th scope="col" className={`${headCell} text-left`}>
@@ -320,25 +323,29 @@ function TripsTable({ plans, onEdit, onDelete }) {
                     {[program.name, trip.date && formatDateMedium(trip.date)].filter(Boolean).join(" · ")}
                   </div>
                 </th>
-                <td className={`${numberCell} text-ink`}>{formatPoints(trip.points)}</td>
-                <td className={`${numberCell} text-ink`}>{formatCents(trip.taxesCents)}</td>
-                <td className={numberCell}>
+                <td data-label="Points" className={`${numberCell} text-ink`}>
+                  {formatPoints(trip.points)}
+                </td>
+                <td data-label="Cash too" className={`${numberCell} text-ink`}>
+                  {formatCents(trip.taxesCents)}
+                </td>
+                <td data-label="Per point" className={numberCell}>
                   {plan.achievedPer100Cents == null ? (
                     <span className="text-ink-soft" title="Add the cash price to see what each point is worth on this trip">
                       —
                     </span>
                   ) : (
-                    <>
+                    <div>
                       <div className={plan.goodValue ? "font-medium text-verdant" : "text-ink"}>
                         {formatPointValue(plan.achievedPer100Cents)}
                       </div>
                       <div className="font-mono text-label uppercase text-ink-soft">
                         {plan.goodValue ? "Beats" : "Under"} your {formatPointValue(plan.valuePer100Cents)}
                       </div>
-                    </>
+                    </div>
                   )}
                 </td>
-                <td className="px-3 py-2 font-sans text-row text-ink">
+                <td data-label="Paid for by" className="px-3 py-2 font-sans text-row text-ink">
                   {plan.covered ? (
                     <span>
                       <span className="font-medium text-verdant">Covered</span>

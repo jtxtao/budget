@@ -1,4 +1,4 @@
-import { lineRuns, movingAverage } from "./chartAxis";
+import { ageLabeller, axisLabels, chartFrame, labelBudget, lineRuns, movingAverage } from "./chartAxis";
 
 /**
  * The two pieces of the chart arithmetic that have a rule rather than only a
@@ -81,5 +81,45 @@ describe("lineRuns", () => {
   test("nothing at all comes back as no runs rather than as an empty string", () => {
     expect(lineRuns([], { x, y })).toEqual([]);
     expect(lineRuns([null, null], { x, y })).toEqual([]);
+  });
+});
+
+// The three helpers that let a chart draw at the width of a phone. Each one's
+// rule is about where it *stops* changing anything: a wide screen has to come
+// out exactly as it did before they existed.
+describe("drawing at a narrow width", () => {
+  test("a wide plot labels as many months as it always did, a narrow one fewer", () => {
+    const year = Array.from({ length: 12 }, (_, index) => `2026-${String(index + 1).padStart(2, "0")}`);
+    expect(axisLabels(year, labelBudget(640))).toHaveLength(12);
+    const narrow = axisLabels(year, labelBudget(221));
+    expect(narrow.length).toBeLessThanOrEqual(5);
+    // Counted back from the most recent, so the right edge is still named.
+    expect(narrow[narrow.length - 1].period).toBe("2026-12");
+    expect(labelBudget(10)).toBe(3);
+  });
+
+  test("an age axis keeps five-year steps where they fit and widens them where not", () => {
+    const ages = Array.from({ length: 61 }, (_, index) => 34 + index);
+    const wide = ages.filter((age, index) => ageLabeller(ages, 640)(age, index));
+    expect(wide).toEqual([34, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 94]);
+
+    const narrow = ages.filter((age, index) => ageLabeller(ages, 221)(age, index));
+    expect(narrow[0]).toBe(34);
+    expect(narrow[narrow.length - 1]).toBe(94);
+    expect(narrow.length).toBeLessThan(wide.length);
+    // A step that would sit on top of an end gives way to it.
+    expect(narrow).not.toContain(35);
+  });
+
+  test("a frame is as wide as its box, with a slimmer gutter on a phone", () => {
+    const pad = { top: 18, right: 54, bottom: 34, left: 66 };
+    const wide = chartFrame({ width: 760, height: 300, pad });
+    expect(wide.plot).toEqual({ left: 66, right: 706, top: 18, bottom: 266 });
+    expect(wide.plotWidth).toBe(640);
+
+    const narrow = chartFrame({ width: 341, height: 300, pad });
+    expect(narrow.view).toEqual({ width: 341, height: 300 });
+    expect(narrow.plot.left).toBe(54);
+    expect(narrow.plotWidth).toBe(341 - 54 - 54);
   });
 });
