@@ -136,14 +136,14 @@ function main() {
   fs.writeFileSync(OUTPUT, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 
   if (origin) {
-    console.log(`[household-books] shell may reach ${origin} (${mode})`);
+    console.log(`[canopy-budget] shell may reach ${origin} (${mode})`);
   } else if (url) {
     console.warn(
-      `[household-books] REACT_APP_SUPABASE_URL is not a URL ("${url}"), so the desktop build will run locally only.`
+      `[canopy-budget] REACT_APP_SUPABASE_URL is not a URL ("${url}"), so the desktop build will run locally only.`
     );
   } else {
     console.log(
-      "[household-books] no REACT_APP_SUPABASE_URL — the desktop build will run on this computer's own books, with no network at all."
+      "[canopy-budget] no REACT_APP_SUPABASE_URL — the desktop build will run on this computer's own books, with no network at all."
     );
   }
 }

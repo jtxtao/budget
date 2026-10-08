@@ -23,7 +23,27 @@ const path = require("path");
  *     here, where the quit handlers can reach it.
  */
 
-const FILE_APP = "household-books";
+/**
+ * Stamped into the file, so a stray JSON file is not mistaken for books.
+ *
+ * A file written while the app was called "Household Books" carries that name
+ * instead, and still reads: the envelope test below accepts anything carrying a
+ * `schema`, which every stamped file has, so the rename needed no second
+ * constant here. `src/booksFile.js` holds the renderer's copy of both.
+ */
+const FILE_APP = "canopy-budget";
+
+/**
+ * The folder this app's books sat in before it was called Canopy Budget.
+ *
+ * `app.getPath("userData")` is built from `productName`, so renaming the app
+ * moved the folder — `%APPDATA%/Canopy Budget` where there had been
+ * `%APPDATA%/Household Books`, and the same sibling swap under
+ * `~/Library/Application Support` and `~/.config`. Without the adoption in
+ * `load()` the rename would read, on an installed copy, as a household's books
+ * vanishing on upgrade.
+ */
+const LEGACY_APP_DIR = "Household Books";
 
 /**
  * The shape of the *wrapper*, not of the books.
@@ -92,7 +112,9 @@ function load(userDataDir) {
   try {
     raw = fs.readFileSync(filePath, "utf8");
   } catch {
-    // No file yet — a first run. Nothing to load and nothing wrong.
+    // No file yet. A genuine first run looks exactly like an upgrade across the
+    // rename from here, so ask the old folder before concluding it is one.
+    adoptLegacy(userDataDir);
     return;
   }
 
@@ -113,16 +135,68 @@ function load(userDataDir) {
     return;
   }
 
-  // Liberal about the wrapper, the same way `parseBooks` is in the renderer,
-  // and by the same test: a bare flat map is what the books were before the
-  // envelope existed, and a file somebody assembled by hand is still theirs.
-  // Asking whether the file *says* it is an envelope, rather than whether it
-  // happens to have a `data` key, is what keeps the two readers agreeing about
-  // the same file.
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+  const data = documentsIn(parsed);
+  if (!data) return;
+
+  for (const [key, value] of Object.entries(data)) documents.set(key, value);
+}
+
+/**
+ * The documents inside a parsed file, or null if that is not what it is.
+ *
+ * Liberal about the wrapper, the same way `parseBooks` is in the renderer, and
+ * by the same test: a bare flat map is what the books were before the envelope
+ * existed, and a file somebody assembled by hand is still theirs. Asking
+ * whether the file *says* it is an envelope, rather than whether it happens to
+ * have a `data` key, is what keeps the two readers agreeing about the same file
+ * — and it is why a file stamped `household-books` still reads under the new
+ * name, since every stamped file carries a `schema` beside the stamp.
+ *
+ * One function because two readers now need it: the file in this app's own
+ * folder, and the one left behind in the folder it used before the rename.
+ */
+function documentsIn(parsed) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
   const isEnvelope = parsed.app === FILE_APP || "schema" in parsed;
   const data = isEnvelope ? parsed.data : parsed;
-  if (!data || typeof data !== "object" || Array.isArray(data)) return;
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  return data;
+}
+
+/**
+ * The books from the folder this app used before it was renamed.
+ *
+ * **Read, never moved or written.** The old file is left exactly where it was,
+ * which makes it a free copy of the books as they stood on the day of the
+ * upgrade — the same thing `books.bak.json` is for, and worth more here because
+ * a rename is precisely when somebody wants to be able to go back. The first
+ * ordinary write lands in the new folder through temp-and-rename as usual, so
+ * nothing special happens on the way out.
+ *
+ * Adopting is therefore **idempotent**: a session that reads the old books and
+ * changes nothing writes nothing, and the next launch adopts them again. What
+ * it is not is a merge — it runs only when this app's own file is *absent*,
+ * because once there is a file here it is the truth and the old folder is
+ * history. In particular it does not run when the file here was found and
+ * quarantined as unreadable: something has already gone wrong with the books at
+ * that point, and quietly substituting an older copy is the one response that
+ * would hide it.
+ */
+function adoptLegacy(userDataDir) {
+  // `%APPDATA%/Canopy Budget` beside `%APPDATA%/Household Books`, and the same
+  // sibling swap under `~/Library/Application Support` and `~/.config`.
+  const legacyPath = path.join(path.dirname(userDataDir), LEGACY_APP_DIR, "books.json");
+
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(legacyPath, "utf8"));
+  } catch {
+    // No old folder, or nothing readable in it: a real first run after all.
+    return;
+  }
+
+  const data = documentsIn(parsed);
+  if (!data) return;
 
   for (const [key, value] of Object.entries(data)) documents.set(key, value);
 }

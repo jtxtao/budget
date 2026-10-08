@@ -465,13 +465,8 @@ function Shell({ title, blurb, children, footer }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-ledger px-6 py-12">
       <div className="w-full max-w-md">
-        <div className="mb-8">
-          <div className="font-sans text-xl font-bold tracking-tight text-chalk">
-            Household Books
-          </div>
-          <div className="mt-0.5 font-mono text-label uppercase text-chalk-soft">
-            Personal budget
-          </div>
+        <div className="mb-8 font-sans text-xl font-bold tracking-tight text-chalk">
+          Canopy Budget
         </div>
 
         <div className="border border-edge bg-panel p-7">

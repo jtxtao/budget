@@ -119,7 +119,7 @@ describe("exporting", () => {
     await clickExport();
 
     expect(downloads).toHaveLength(1);
-    expect(downloads[0]).toMatch(/^household-books-\d{4}-\d{2}-\d{2}\.json$/);
+    expect(downloads[0]).toMatch(/^canopy-budget-\d{4}-\d{2}-\d{2}\.json$/);
     // The panel has to say it landed. Asserting it here is also what keeps the
     // state update inside the act above rather than leaking past the test.
     expect(screen.getByRole("status")).toHaveTextContent(/exported/i);

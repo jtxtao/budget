@@ -29,20 +29,31 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
+let root;
 let dir;
 let books;
 
-/** Fresh module state per test — this module is a singleton over one file. */
+/**
+ * Fresh module state per test — this module is a singleton over one file.
+ *
+ * `dir` is a *named folder inside* `root` rather than the temp directory
+ * itself, because that is the shape of the real thing: `getPath("userData")` is
+ * always `<some parent>/<productName>`, and the adoption across the rename
+ * reads a sibling of it. A fixture rooted at `os.tmpdir()` would make that
+ * sibling a shared global folder.
+ */
 beforeEach(() => {
   jest.useFakeTimers();
   jest.resetModules();
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), "household-books-"));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), "canopy-budget-"));
+  dir = path.join(root, "Canopy Budget");
+  fs.mkdirSync(dir);
   books = require("../electron/books");
 });
 
 afterEach(() => {
   jest.useRealTimers();
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(root, { recursive: true, force: true });
 });
 
 const at = (name) => path.join(dir, name);
@@ -68,7 +79,7 @@ describe("reading the file at start-up", () => {
 
   it("reads the envelope it writes", () => {
     seed("books.json", {
-      app: "household-books",
+      app: "canopy-budget",
       schema: 1,
       writtenAt: "2026-09-01T00:00:00.000Z",
       data: { budgets: [{ id: "a" }], paySchedule: { cadence: "fortnightly" } },
@@ -117,6 +128,80 @@ describe("reading the file at start-up", () => {
   });
 });
 
+/**
+ * The app was called "Household Books", and `getPath("userData")` is built from
+ * that name — so renaming it moved the folder out from under an installed copy.
+ * On that machine a first run and an upgrade are the same thing on disk, which
+ * is why this is read-only and idempotent rather than a one-shot move.
+ */
+describe("the folder the app used before it was renamed", () => {
+  const legacyDir = () => path.join(root, "Household Books");
+  const seedLegacy = (contents) => {
+    fs.mkdirSync(legacyDir(), { recursive: true });
+    fs.writeFileSync(path.join(legacyDir(), "books.json"), JSON.stringify(contents));
+  };
+  const legacyRaw = () => fs.readFileSync(path.join(legacyDir(), "books.json"), "utf8");
+
+  it("adopts the old books when this folder has none, stamp and all", () => {
+    seedLegacy({
+      app: "household-books",
+      schema: 1,
+      data: { budgets: [{ id: "a", name: "Food" }] },
+    });
+
+    books.load(dir);
+
+    expect(books.snapshot()).toEqual({ budgets: [{ id: "a", name: "Food" }] });
+  });
+
+  it("leaves the old file exactly where it was, as the copy from before the upgrade", () => {
+    seedLegacy({ app: "household-books", schema: 1, data: { budgets: [{ id: "a" }] } });
+    const before = legacyRaw();
+
+    books.load(dir);
+
+    // Adopting is a read. Nothing is written here until the household edits
+    // something, and when they do it lands in the new folder.
+    books.flush();
+    expect(exists("books.json")).toBe(false);
+    expect(legacyRaw()).toBe(before);
+
+    books.write("budgets", JSON.stringify([{ id: "a" }, { id: "b" }]));
+    books.flush();
+    expect(read("books.json").data).toEqual({ budgets: [{ id: "a" }, { id: "b" }] });
+    expect(legacyRaw()).toBe(before);
+  });
+
+  it("prefers its own file, because once there is one the old folder is history", () => {
+    seedLegacy({ app: "household-books", schema: 1, data: { budgets: [{ id: "old" }] } });
+    seed("books.json", { app: "canopy-budget", schema: 1, data: { budgets: [{ id: "new" }] } });
+
+    books.load(dir);
+
+    expect(books.snapshot()).toEqual({ budgets: [{ id: "new" }] });
+  });
+
+  it("does not stand in for a file it had to quarantine", () => {
+    // Something has already gone wrong with the books here. Quietly serving an
+    // older copy instead is the one response that would hide it.
+    seedLegacy({ app: "household-books", schema: 1, data: { budgets: [{ id: "old" }] } });
+    seed("books.json", '{"budgets": [{"id": "a"}');
+
+    books.load(dir);
+
+    expect(unreadableFile()).toBeDefined();
+    expect(books.snapshot()).toEqual({});
+  });
+
+  it("is a real first run when there is no old folder at all", () => {
+    books.load(dir);
+
+    expect(books.snapshot()).toEqual({});
+    books.flush();
+    expect(exists("books.json")).toBe(false);
+  });
+});
+
 describe("writing", () => {
   it("puts the documents in the file parsed, so a person can read their own books", () => {
     books.load(dir);
@@ -125,7 +210,7 @@ describe("writing", () => {
 
     const file = read("books.json");
 
-    expect(file.app).toBe("household-books");
+    expect(file.app).toBe("canopy-budget");
     expect(file.schema).toBe(books.FILE_SCHEMA);
     // The renderer speaks in JSON strings because its end of this is a drop-in
     // `Storage`. What lands on disk must not be a map of escaped strings.
@@ -237,7 +322,7 @@ describe("writing", () => {
 describe("the backup", () => {
   it("is the file as it was found at launch, and is taken once", () => {
     seed("books.json", {
-      app: "household-books",
+      app: "canopy-budget",
       schema: 1,
       data: { budgets: [{ id: "as-found" }] },
     });

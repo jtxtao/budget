@@ -5,7 +5,7 @@
  * A desktop app is a row in a dock, a tile in a Start menu and a line in an
  * installer before it is ever a window, and until this script existed all three
  * showed Create React App's React atom — the scaffold's logo, on a household's
- * ledger. The window said "Household Books" and everything around it said
+ * ledger. The window said "Canopy Budget" and everything around it said
  * something else.
  *
  * **It is a script and not a checked-in binary somebody once exported**, for

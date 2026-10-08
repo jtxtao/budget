@@ -1,4 +1,4 @@
--- Household Books — Supabase schema.
+-- Canopy Budget — Supabase schema.
 --
 -- Run this once, whole, in the SQL editor of a new project. It is idempotent:
 -- every statement guards itself, so re-running after a change is safe.

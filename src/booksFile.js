@@ -21,8 +21,15 @@ import { LEGACY_KEYS, STORE_KEYS } from "./storage";
  * by then every file in the wild lacks it.
  */
 
-/** Stamped into every file, so a stray JSON file is not mistaken for books. */
-export const FILE_APP = "household-books";
+/**
+ * Stamped into every file, so a stray JSON file is not mistaken for books.
+ *
+ * Files exported while the app was called "Household Books" carry that name and
+ * **still import**: `parseBooks` treats anything carrying a `schema` as an
+ * envelope, and every stamped file has one, so the rename needed no second
+ * constant and no migration. `electron/books.js` holds the shell's copy.
+ */
+export const FILE_APP = "canopy-budget";
 
 /**
  * The shape of the wrapper, not of the books.
@@ -133,14 +140,14 @@ function hasContent(value) {
   return true;
 }
 
-/** `household-books-2026-09-27.json`, and the archive's variant beside it. */
+/** `canopy-budget-2026-09-27.json`, and the archive's variant beside it. */
 export function booksFilename({ at = new Date(), suffix = "" } = {}) {
   const day = [
     at.getFullYear(),
     String(at.getMonth() + 1).padStart(2, "0"),
     String(at.getDate()).padStart(2, "0"),
   ].join("-");
-  return `household-books${suffix ? `-${suffix}` : ""}-${day}.json`;
+  return `canopy-budget${suffix ? `-${suffix}` : ""}-${day}.json`;
 }
 
 /**

@@ -69,7 +69,7 @@ const SUPABASE_ORIGIN = (() => {
     return config.supabaseOrigin || null;
   } catch {
     console.log(
-      "[household-books] no electron/shell-config.json — running local only. `npm run desktop` writes it."
+      "[canopy-budget] no electron/shell-config.json — running local only. `npm run desktop` writes it."
     );
     return null;
   }
@@ -289,7 +289,7 @@ function createWindow() {
     minHeight: 600,
     backgroundColor: groundColor(),
     show: false,
-    title: "Household Books",
+    title: "Canopy Budget",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -311,7 +311,7 @@ function createWindow() {
    */
   win.webContents.on("did-fail-load", (_event, code, description, url) => {
     if (code === -3) return; // aborted, which a normal in-app navigation raises
-    console.error(`[household-books] could not load ${url}: ${description} (${code})`);
+    console.error(`[canopy-budget] could not load ${url}: ${description} (${code})`);
   });
 
   // Opt-in, because forwarding every renderer log to a terminal nobody is
@@ -321,7 +321,7 @@ function createWindow() {
       console.log(`[renderer] ${message}`);
     });
     win.webContents.on("did-finish-load", () => {
-      console.log(`[household-books] loaded ${win.webContents.getURL()}`);
+      console.log(`[canopy-budget] loaded ${win.webContents.getURL()}`);
     });
   }
 

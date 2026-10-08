@@ -1,8 +1,8 @@
 {
-  "name": "react-budget-app",
+  "name": "canopy-budget",
   "version": "0.1.0",
   "private": true,
-  "productName": "Household Books",
+  "productName": "Canopy Budget",
   "description": "A household's budget, on their own computer.",
   "author": "JT Tao",
   "dependencies": {
@@ -64,7 +64,7 @@
   "main": "electron/main.js",
   "build": {
     "extends": null,
-    "appId": "com.household-books.app",
+    "appId": "com.canopy-budget.app",
     "copyright": "Copyright © JT Tao",
     "directories": {
       "output": "dist",

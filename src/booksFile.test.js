@@ -104,13 +104,13 @@ describe("naming", () => {
     // 1 March in local time, whatever the runner's offset — the same discipline
     // `todayISO` keeps, since a file named for yesterday is confusing.
     const at = new Date(2026, 2, 1, 9, 30);
-    expect(booksFilename({ at })).toBe("household-books-2026-03-01.json");
+    expect(booksFilename({ at })).toBe("canopy-budget-2026-03-01.json");
   });
 
   test("the archive names itself apart from the export", () => {
     const at = new Date(2026, 2, 1);
     expect(booksFilename({ at, suffix: "before-restore" })).toBe(
-      "household-books-before-restore-2026-03-01.json"
+      "canopy-budget-before-restore-2026-03-01.json"
     );
   });
 });
