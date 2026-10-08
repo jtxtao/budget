@@ -37,6 +37,23 @@ function MoonIcon() {
   );
 }
 
+// A door with an arrow leaving it: what "Sign out" wears below `sm`, where its
+// words are what pushes the header onto a second line.
+function SignOutIcon() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true" focusable="false">
+      <path
+        d="M6 2.5H3.5v11H6M10 5l3 3-3 3M13 8H6.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /**
  * The canopy: the header band, the same deep green in both modes, with the
  * Elder beside the name and the light/dark switch at the far end.
@@ -53,7 +70,7 @@ export default function AppShell({ children }) {
     <div className="min-h-screen bg-ledger">
       <header className="bg-canopy">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pt-4 sm:pt-5">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-4 sm:gap-x-4 sm:pt-5">
             <div className="flex items-center gap-x-2.5 sm:gap-x-3.5">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-on-canopy-soft sm:h-11 sm:w-11">
                 <Elder className="h-7 w-8 sm:h-9 sm:w-10" />
@@ -64,11 +81,11 @@ export default function AppShell({ children }) {
                 control is who the books belong to, so identity sits at the
                 far edge where it has always been and the switch tucks in
                 beside it. */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-2 sm:gap-x-3">
               <QuickEntry />
               <Button
                 variant="canopy"
-                className="gap-2 rounded-full"
+                className="gap-2 rounded-full max-sm:px-2.5"
                 type="button"
                 aria-pressed={dark}
                 onClick={toggleTheme}
@@ -257,8 +274,10 @@ function AccountControl() {
   if (local) {
     return (
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {/* Hidden below `sm`, where it is what pushes the header onto a second
+            line — the email's rule. */}
         <span
-          className="font-mono text-label uppercase text-on-canopy-soft"
+          className="hidden font-mono text-label uppercase text-on-canopy-soft sm:inline"
           title={
             isDesktop()
               ? "Your books are in a file on this computer. Nothing is sent anywhere."
@@ -279,7 +298,7 @@ function AccountControl() {
   if (!email) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-2 sm:gap-x-4">
       <SyncBadge state={syncState} />
       {/* `title` rather than a wider column: an address long enough to be
           truncated is still identifiable by its start, and the header must not
@@ -301,8 +320,19 @@ function AccountControl() {
           Stop syncing
         </Button>
       )}
-      <Button variant="canopy" size="sm" type="button" onClick={signOut}>
-        Sign out
+      {/* Icon-only below `sm`, the dark-mode switch's treatment: the words
+          stay as its accessible name, and `title` says them on hover. */}
+      <Button
+        variant="canopy"
+        className="gap-2 rounded-full max-sm:px-2.5 sm:rounded-none sm:px-2 sm:py-1 sm:text-label"
+        type="button"
+        title="Sign out"
+        onClick={signOut}
+      >
+        <span className="sm:hidden">
+          <SignOutIcon />
+        </span>
+        <span className="sr-only sm:not-sr-only">Sign out</span>
       </Button>
     </div>
   );
@@ -321,6 +351,10 @@ function AccountControl() {
  * account controls and the dark-mode switch sideways and back. The live region
  * stays mounted for the same reason a screen reader needs it to: a status that
  * appears with its own container is often not announced at all.
+ *
+ * Below `sm` each label is a dot — pulsing while saving, rust when not landing —
+ * with the words kept for a screen reader and the `title`, because two words of
+ * reserved width are what pushes a phone's header onto a second line.
  */
 function SyncBadge({ state }) {
   const saving = state === SYNC_STATE.SAVING;
@@ -330,22 +364,30 @@ function SyncBadge({ state }) {
     <span role="status" className="inline-grid items-center">
       <span
         aria-hidden={!saving}
-        className={`col-start-1 row-start-1 px-2 py-0.5 text-center font-mono text-label uppercase text-on-canopy-soft ${
+        className={`col-start-1 row-start-1 text-center font-mono sm:px-2 sm:py-0.5 text-label uppercase text-on-canopy-soft ${
           saving ? "" : "invisible"
         }`}
       >
-        Saving…
+        <span className="sr-only sm:not-sr-only">Saving…</span>
+        <span
+          aria-hidden="true"
+          className="block h-2 w-2 animate-pulse rounded-full bg-on-canopy-soft sm:hidden"
+        />
       </span>
       <span
         aria-hidden={!offline}
         title={`Your edits are safe ${
           isDesktop() ? "on this computer" : "in this browser"
         } and will be sent when the connection is back.`}
-        className={`col-start-1 row-start-1 border border-on-canopy-rust/60 px-2 py-0.5 text-center font-mono text-label uppercase text-on-canopy-rust ${
+        className={`col-start-1 row-start-1 text-center sm:border sm:border-on-canopy-rust/60 sm:px-2 sm:py-0.5 font-mono text-label uppercase text-on-canopy-rust ${
           offline ? "" : "invisible"
         }`}
       >
-        Not saved
+        <span className="sr-only sm:not-sr-only">Not saved</span>
+        <span
+          aria-hidden="true"
+          className="block h-2 w-2 rounded-full bg-on-canopy-rust sm:hidden"
+        />
       </span>
     </span>
   );
