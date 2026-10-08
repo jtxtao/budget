@@ -162,8 +162,8 @@ export default function DonationsPage() {
             squeezing it into half a tablet would cost more than the scrolling it
             saves. `items-start` so the shorter column ends where its content does
             rather than being stretched to match. */}
-        <div className="grid items-start gap-x-5 gap-y-4 lg:grid-cols-3">
-          <div className="lg:col-span-2">
+        <div className="grid items-start gap-x-5 gap-y-4 [&>*]:min-w-0 lg:grid-cols-3">
+          <div className="min-w-0 lg:col-span-2">
             <DonationList
               year={year}
               rows={giftRows}

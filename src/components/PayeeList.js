@@ -127,7 +127,10 @@ export default function PayeeList() {
               the ones you already have and creates the one you name.
             </p>
           ) : (
-            <table className="w-full table-fixed border-collapse border-t border-edge">
+            /* Its fixed column widths come to more than a phone is wide, so the
+               table scrolls inside the panel rather than taking the page with it. */
+            <div className="scroll-x">
+              <table className="w-full table-fixed border-collapse border-t border-edge">
               <thead>
                 <tr className="bg-panel-raised">
                   {/* A width on the name and none on the actions, so it is the
@@ -238,7 +241,8 @@ export default function PayeeList() {
                   );
                 })}
               </tbody>
-            </table>
+              </table>
+            </div>
           )}
         </div>
       </details>

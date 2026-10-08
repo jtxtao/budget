@@ -264,8 +264,8 @@ export default function ConfigurationPage() {
           half a tablet would cost more than the scrolling it saves. `items-start`
           so the shorter column ends where its content does rather than being
           stretched to match the taller one. */}
-      <div className="mt-4 grid items-start gap-x-5 gap-y-8 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+      <div className="mt-4 grid items-start gap-x-5 gap-y-8 [&>*]:min-w-0 lg:grid-cols-3">
+        <div className="min-w-0 lg:col-span-2">
           {/* Income leads the column: it is what the categories below are
               planned against, so the money coming in is stated before the
               money it is divided into. */}

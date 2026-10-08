@@ -126,7 +126,7 @@ export default function ScenariosPanel({
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      <div className="scroll-x">
         <table className="w-full border-collapse" aria-label="Plans compared">
           <thead>
             <tr className="bg-panel-raised">
@@ -203,7 +203,7 @@ export default function ScenariosPanel({
               else as it is.
             </p>
           </div>
-          <div className="overflow-x-auto">
+          <div className="scroll-x">
             <table className="w-full border-collapse" aria-label="Sensitivity to the rates">
               <thead>
                 <tr className="bg-panel-raised">

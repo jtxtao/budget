@@ -161,7 +161,7 @@ export default function SpendingByCategoryTable({ report, selectedBudgetId, onSe
           and it will be broken down here.
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="scroll-x">
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-panel-raised">

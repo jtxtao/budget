@@ -186,7 +186,11 @@ function AmountCell({ transaction, label, kind, onCommit, onSplit }) {
   // direction is its pair of accounts, and that is edited in the Account cell.
   if (transfer && kind === TRANSACTION_KINDS.INFLOW) {
     return (
-      <td className="px-3 py-1 text-right font-mono text-row text-ink-soft" aria-hidden="true">
+      <td
+        data-label="In"
+        className="px-3 py-1 text-right font-mono text-row text-ink-soft"
+        aria-hidden="true"
+      >
         —
       </td>
     );
@@ -203,13 +207,17 @@ function AmountCell({ transaction, label, kind, onCommit, onSplit }) {
   if (split) {
     if (!active) {
       return (
-        <td className="px-3 py-1 text-right font-mono text-row text-ink-soft" aria-hidden="true">
+        <td
+          data-label={column}
+          className="px-3 py-1 text-right font-mono text-row text-ink-soft"
+          aria-hidden="true"
+        >
           —
         </td>
       );
     }
     return (
-      <td className="px-3 py-1">
+      <td data-label={column} className="px-3 py-1">
         <button
           type="button"
           aria-label={`${column} for ${label} — open the split to change it`}
@@ -244,7 +252,7 @@ function AmountCell({ transaction, label, kind, onCommit, onSplit }) {
   }
 
   return (
-    <td className="px-3 py-1">
+    <td data-label={column} className="px-3 py-1">
       <input
         type="text"
         inputMode="decimal"
@@ -354,7 +362,7 @@ function RegisterRow({
   return (
     <>
       <tr className={rowBg(index)}>
-        <td className="px-3 py-1">
+        <td data-label="Date" className="px-3 py-1">
           <input
             type="date"
             key={transaction.date ?? "undated"}
@@ -369,7 +377,7 @@ function RegisterRow({
             alone, which is also what every row written before payees existed
             shows. Keyed on the stored payee so a commit re-seeds the field with
             what actually landed. */}
-        <td className="px-3 py-1">
+        <td data-label="Payee & note" className="px-3 py-1">
           {!transfer && (
             <PayeeField
               surface="cell"
@@ -395,7 +403,7 @@ function RegisterRow({
             className={`${cellInput} ${transfer ? "" : "text-ink-soft"}`}
           />
         </td>
-        <td className="px-3 py-1">
+        <td data-label="Category" className="px-3 py-1">
           {wantsCategory && split ? (
             // Not a select: the answer is several categories, and the one control
             // that can state it is the editor. The count is on the face of it so
@@ -450,7 +458,7 @@ function RegisterRow({
         {/* Both ends of a transfer live here, stacked, rather than in a column of
             their own: another fixed width would push the grid past its container
             at 768px, and the two are one answer read top to bottom. */}
-        <td className="px-3 py-1">
+        <td data-label="Account" className="px-3 py-1">
           <AccountSelect
             value={transaction.accountId}
             label={transfer ? `Transferred from, for ${label}` : `Account of ${label}`}
@@ -638,7 +646,7 @@ export default function TransactionRegister({
               keep six columns apart puts a scrollbar under the whole page. The
               fixed layout already holds the columns steady; below the width they
               need, they shrink together rather than the page sliding sideways. */}
-          <table className="w-full table-fixed border-collapse">
+          <table className="reflow w-full table-fixed border-collapse">
             <thead>
               <tr className="bg-panel-raised">
                 {COLUMNS.map((column) => (

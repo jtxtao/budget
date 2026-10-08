@@ -73,8 +73,18 @@ function renderPage() {
   );
 }
 
-/** The row of a table whose first cell holds this name. */
-const row = (name) => screen.getByRole("rowheader", { name }).closest("tr");
+/**
+ * The row of a table whose first cell holds this name.
+ *
+ * Matched on the opening of the accessible name rather than the whole of it: a
+ * category row's header now also speaks its funding reading ("Rent, on track"),
+ * which is the point of carrying that reading on the name instead of in a
+ * column of its own.
+ */
+const row = (name) =>
+  screen
+    .getByRole("rowheader", { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`) })
+    .closest("tr");
 
 beforeEach(() => {
   localStorage.clear();
@@ -402,7 +412,10 @@ describe("what is due", () => {
 });
 
 describe("funding against the estimate", () => {
-  const funding = (name) => within(row(name)).getAllByRole("cell")[0].textContent;
+  // The reading lives on the name now, not in a column of its own: the word is
+  // spoken from the row header and the gap, where there is one, is printed
+  // beside it.
+  const funding = (name) => within(row(name)).getByRole("rowheader").textContent;
 
   test("each row says how it stands against its estimate, in words", () => {
     seed();
@@ -410,9 +423,9 @@ describe("funding against the estimate", () => {
 
     // Rent: $1,500 planned, $1,200 spent, $300 left — exactly what the month
     // still asks of it.
-    expect(funding("Rent")).toBe("On track");
+    expect(funding("Rent")).toBe("Rent, on track");
     // Groceries: $600 planned and nothing in it.
-    expect(funding("Groceries")).toBe("Underfunded· $600 short");
+    expect(funding("Groceries")).toBe("Groceries, underfunded$600 short");
     expect(screen.getByText(/1 category short/)).toBeInTheDocument();
     expect(screen.getByRole("list", { name: "Funding key" })).toHaveTextContent(
       /Short.*On track.*Well funded/
@@ -427,7 +440,7 @@ describe("funding against the estimate", () => {
     renderPage();
 
     // $1,800 left against $300 still to go this month and $1,500 next month.
-    expect(funding("Rent")).toBe("Well funded");
+    expect(funding("Rent")).toBe("Rent, well funded");
 
     fireEvent.click(screen.getByRole("button", { name: "Fund Groceries" }));
     expect(screen.getByLabelText("Move from")).toHaveValue("to-be-assigned");
@@ -473,9 +486,11 @@ describe("moving money between categories", () => {
   }
 
   function amounts() {
+    // Available is the row's first cell again, now that the funding reading is
+    // carried by the name rather than by a column of its own.
     return {
-      rent: within(row("Rent")).getAllByRole("cell")[1].textContent,
-      groceries: within(row("Groceries")).getAllByRole("cell")[1].textContent,
+      rent: within(row("Rent")).getAllByRole("cell")[0].textContent,
+      groceries: within(row("Groceries")).getAllByRole("cell")[0].textContent,
     };
   }
 

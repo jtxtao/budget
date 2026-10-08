@@ -182,7 +182,7 @@ export default function UpdateBalancesModal({ show, period, tracked, handleClose
             recorded each month.
           </p>
         ) : (
-          <div className="mb-5 overflow-x-auto">
+          <div className="mb-5 scroll-x">
             <table className="w-full border-collapse">
               <thead>
                 <tr className="bg-panel-raised">

@@ -27,6 +27,17 @@ import { routerFuture } from './routerFuture';
 //
 // AppProviders is unchanged underneath all of it, which was the point — see
 // src/hooks/useSyncedState.js.
+
+// A household to look at on the dev server, written before the first render
+// because the store initialisers read storage synchronously. `require` inside a
+// constant condition rather than a top-level import, so webpack folds the branch
+// and drops the module from a production build entirely — see src/devSeed.js,
+// which also explains why it only ever writes local mode's own books.
+if (process.env.NODE_ENV === 'development') {
+  // eslint-disable-next-line global-require
+  require('./devSeed').installDemoBooks();
+}
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>

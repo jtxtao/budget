@@ -310,7 +310,7 @@ export default function BalanceHistoryPanel() {
                 )}
               </div>
 
-              <div className="overflow-x-auto border-t border-edge">
+              <div className="scroll-x border-t border-edge">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-panel-raised">

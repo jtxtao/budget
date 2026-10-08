@@ -215,7 +215,7 @@ export default function AssignIncomeModal({
             No categories yet. Add one on the Budget plan page, then come back to fund it.
           </p>
         ) : (
-          <div className="mb-5 overflow-x-auto">
+          <div className="mb-5 scroll-x">
             <table className="w-full border-collapse">
               <thead>
                 <tr className="bg-panel-raised">
@@ -283,7 +283,7 @@ export default function AssignIncomeModal({
             <div className="mb-2 font-mono text-label uppercase text-chalk-soft">
               Savings goals
             </div>
-            <div className="mb-5 overflow-x-auto">
+            <div className="mb-5 scroll-x">
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-panel-raised">

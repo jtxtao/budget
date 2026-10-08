@@ -599,8 +599,16 @@ export default function CategoryPlanner({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="space-y-3">
-        {view.map((section, index) => (
+      {/* The row's five columns are fixed widths shared with the heading and
+          the drag overlay — that is what keeps the three aligned — and together
+          they come to more than a phone is wide. So the list scrolls sideways
+          inside its own box rather than taking the page with it, and the
+          columns stay in step at every width. The overlay is deliberately
+          *outside* this box: paint containment would make it the containing
+          block for the fixed-position copy that follows the pointer. */}
+      <div className="scroll-x">
+        <div className="min-w-[29rem] space-y-3">
+          {view.map((section, index) => (
           <Section
             key={sectionId(section.groupId)}
             section={section}
@@ -619,10 +627,11 @@ export default function CategoryPlanner({
               if (at === -1 || to < 0 || to >= groupCount) return;
               onLayoutChange(toLayout(arrayMove(view, at, to)));
             }}
-            canMoveUp={index > 0}
-            canMoveDown={index < groupCount - 1}
-          />
-        ))}
+              canMoveUp={index > 0}
+              canMoveDown={index < groupCount - 1}
+            />
+          ))}
+        </div>
       </div>
 
       {/* The dragged row follows the pointer as a detached copy, so it stays

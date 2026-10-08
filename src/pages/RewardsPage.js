@@ -86,7 +86,7 @@ function BalancesTable({ balances, valuations, resolve, onPoints, onEdit, onDele
     .filter((row) => row.program);
 
   return (
-    <div className="relative overflow-x-auto">
+    <div className="relative scroll-x">
       <table className="w-full border-collapse">
         <thead>
           <tr className="bg-panel-raised">
@@ -196,7 +196,7 @@ function BalancesTable({ balances, valuations, resolve, onPoints, onEdit, onDele
 /** Every program in the catalog, its starting value, and the household's own. */
 function ValuationsTable({ valuations, heldPoints, onValue }) {
   return (
-    <div className="relative overflow-x-auto">
+    <div className="relative scroll-x">
       <table className="w-full border-collapse">
         <thead>
           <tr className="bg-panel-raised">
@@ -285,7 +285,7 @@ function fundingSentence(plan) {
 
 function TripsTable({ plans, onEdit, onDelete }) {
   return (
-    <div className="relative overflow-x-auto">
+    <div className="relative scroll-x">
       <table className="w-full border-collapse">
         <thead>
           <tr className="bg-panel-raised">

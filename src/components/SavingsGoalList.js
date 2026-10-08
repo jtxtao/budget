@@ -211,7 +211,7 @@ export default function SavingsGoalList({ rows, period, onAssign, onEdit, onDele
           camera, a wedding, a special event.
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="scroll-x">
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-panel-raised">

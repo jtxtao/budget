@@ -247,7 +247,12 @@ export default function DashboardPage() {
           layout rather than two. `items-start` so the accounts panel ends where
           its rows do instead of being stretched to the table's height. */}
       <div className="mt-4 grid items-start gap-x-5 gap-y-4 xl:grid-cols-3">
-        <div className="xl:col-span-2">
+        {/* `min-w-0` for the reason spelled out on the column beside it: a grid
+            track will not shrink below its content's min-content width, and a
+            five-column table of figures is wider than a phone. Without it the
+            table's own `overflow-x-auto` can never engage — the track simply
+            grows and the whole page scrolls sideways instead. */}
+        <div className="min-w-0 xl:col-span-2">
           <CategoryLedgerTable
             sections={dashboard.sections}
             otherRows={dashboard.otherRows}
@@ -260,8 +265,17 @@ export default function DashboardPage() {
         </div>
         {/* Upcoming above the accounts in the narrow column: it is the one panel
             here with something to do on it, and what is due is read more often
-            than when an account was last checked. */}
-        <div className="grid gap-4">
+            than when an account was last checked.
+
+            `min-w-0` is load-bearing, not tidying. A grid track is `auto` by
+            default, which means it will not shrink below its content's
+            min-content width — and a row here is a truncating name beside a
+            `whitespace-nowrap` due date, an amount and two buttons, so its
+            min-content is wider than the third of the grid it is meant to sit
+            in. Without this the column simply grows, pushing the panel past the
+            page and putting a horizontal scrollbar under the whole dashboard.
+            The panel's own rows already truncate; this is what lets them. */}
+        <div className="grid min-w-0 gap-4">
           <UpcomingBills
             rows={upcoming.rows}
             overdueCount={upcoming.overdueCount}

@@ -29,15 +29,27 @@ import { formatCents } from "../utils";
  * category part-way through saving, which is what every goal looks like
  * until the day it is met.
  *
- * **The Funding column is a reading against the plan, not a second definition
- * of trouble.** Each row says, in a word and a colour, whether what it holds
- * will see the month out against its estimate — red for short (overspent, or
- * underfunded with the gap named), yellow for on track, green for a month
- * ahead or a goal reached. `src/fundingStatus.js` is the rule; this file only
- * maps it to tones. Colour is never the only channel: the word is always
- * there, and the stripe down the row's left edge repeats the colour for a
- * reader running an eye down the list. A category with no estimate gets no
- * colour at all, because there is nothing for it to be short of.
+ * **Funding is a reading against the plan, not a second definition of trouble**,
+ * and it is carried by **the category's own name** — red for short (overspent,
+ * or underfunded), yellow for on track, green for a month ahead or a goal
+ * reached. `src/fundingStatus.js` is the rule; this file only maps it to tones.
+ *
+ * It was a column of its own, and the column was the wrong shape for it: a
+ * reading that applies to the whole row does not need a cell, and spending a
+ * sixth of the table's width restating five words down a list is width taken
+ * from the figures the page exists to show — on a third of the dashboard's
+ * grid, it was enough to push the panel beside it off the page. The name is
+ * the row's subject, so colouring it says "this category" rather than "this
+ * cell", and the stripe down the left edge was already repeating the colour
+ * for a reader running an eye down the list.
+ *
+ * **Colour is still not the only channel.** The gap is named in words beside
+ * any row that has one, which is the only reading a household can act on; the
+ * other three are announced to a screen reader from the same cell, so the row
+ * reads "Rent, on track" however it is reached; and the key above the table
+ * says what the colours mean. A category with no estimate keeps the ordinary
+ * ink and gets no stripe, because there is nothing for it to be short of —
+ * greying it would read as a category switched off rather than unplanned.
  *
  * **The Available figure is also the control that moves it.** Noticing that a
  * category is short and doing something about it are one thought, so they are
@@ -71,7 +83,9 @@ export const FUNDING_TONES = {
   [FUNDING.UNDERFUNDED]: { stripe: "border-l-vermilion", dot: "bg-vermilion", text: "text-vermilion" },
   [FUNDING.ON_TRACK]: { stripe: "border-l-sulfur", dot: "bg-sulfur", text: "text-sulfur" },
   [FUNDING.WELL_FUNDED]: { stripe: "border-l-verdant", dot: "bg-verdant", text: "text-verdant" },
-  [FUNDING.NO_ESTIMATE]: { stripe: "border-l-transparent", dot: "bg-rule", text: "text-ink-soft" },
+  // The ordinary ink, not a grey: a category nobody has written an estimate for
+  // is unplanned, and a greyed-out name reads as one that has been switched off.
+  [FUNDING.NO_ESTIMATE]: { stripe: "border-l-transparent", dot: "bg-rule", text: "text-ink" },
 };
 
 /** The legend's three, in the order a reader is asked to care about them. */
@@ -81,22 +95,31 @@ const LEGEND = [
   { tone: FUNDING_TONES[FUNDING.WELL_FUNDED], label: "Well funded" },
 ];
 
-/** The word, plus the figure that would fix it where there is one. */
-function FundingCell({ funding }) {
-  const tone = FUNDING_TONES[funding.status];
-  const short = funding.shortCents > 0;
+/**
+ * The category's name, carrying its funding reading.
+ *
+ * The name is the row's subject, so the tone belongs on it. The word itself is
+ * only *spoken* — a screen reader gets "Rent, on track" — except where there is
+ * a gap, which is printed, because a figure is the one reading a household can
+ * do something about and "$600 short" says more than "underfunded" does.
+ */
+function NameCell({ row }) {
+  const tone = FUNDING_TONES[row.funding.status];
+  const short = row.funding.shortCents > 0;
   return (
-    <td className="whitespace-nowrap px-3 py-2 text-left">
-      <span className={`inline-flex items-center gap-1.5 font-mono text-label uppercase ${tone.text}`}>
-        <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />
-        {FUNDING_LABELS[funding.status]}
-        {short && (
-          <span className="normal-case tabular-nums">
-            · {formatCents(funding.shortCents)} {funding.status === FUNDING.OVERSPENT ? "over" : "short"}
-          </span>
-        )}
-      </span>
-    </td>
+    <th
+      scope="row"
+      className={`border-l-4 ${tone.stripe} px-4 py-2 text-left font-sans text-row font-normal`}
+    >
+      <span className={short ? `font-medium ${tone.text}` : tone.text}>{row.name}</span>
+      <span className="sr-only">, {FUNDING_LABELS[row.funding.status].toLowerCase()}</span>
+      {short && (
+        <span className={`ml-2 whitespace-nowrap font-mono text-label tabular-nums ${tone.text}`}>
+          {formatCents(row.funding.shortCents)}{" "}
+          {row.funding.status === FUNDING.OVERSPENT ? "over" : "short"}
+        </span>
+      )}
+    </th>
   );
 }
 
@@ -160,16 +183,9 @@ function moveLabel(row) {
 }
 
 function CategoryRow({ row, striped, onMove }) {
-  const tone = FUNDING_TONES[row.funding.status];
   return (
     <tr className={striped ? "bg-sheet-alt" : "bg-sheet"}>
-      <th
-        scope="row"
-        className={`border-l-4 ${tone.stripe} px-4 py-2 text-left font-sans text-row font-normal text-ink`}
-      >
-        {row.name}
-      </th>
-      <FundingCell funding={row.funding} />
+      <NameCell row={row} />
       {COLUMNS.map((column) => {
         const { cents, tone } = cellFor(row, column.key);
         const movable = onMove && column.key === "availableCents";
@@ -195,7 +211,6 @@ function GroupBand({ name, totals }) {
       <th scope="colgroup" className="px-4 py-1.5 text-left font-mono text-label uppercase text-ink">
         {name}
       </th>
-      <td />
       {COLUMNS.map((column) => (
         <td
           key={column.key}
@@ -294,7 +309,7 @@ export default function CategoryLedgerTable({
           and it will appear here with everything it holds.
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="scroll-x">
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-panel-raised">
@@ -303,12 +318,6 @@ export default function CategoryLedgerTable({
                   className="px-4 py-2 text-left font-mono text-label uppercase text-chalk"
                 >
                   Category
-                </th>
-                <th
-                  scope="col"
-                  className="whitespace-nowrap px-3 py-2 text-left font-mono text-label uppercase text-chalk"
-                >
-                  Funding
                 </th>
                 {COLUMNS.map((column) => (
                   <th key={column.key} scope="col" className={headCell}>
@@ -361,7 +370,6 @@ export default function CategoryLedgerTable({
                 >
                   All categories
                 </th>
-                <td />
                 {COLUMNS.map((column) => (
                   <td
                     key={column.key}

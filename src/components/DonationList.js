@@ -277,7 +277,7 @@ export default function DonationList({
           deductible.
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="scroll-x">
           <table className="w-full table-fixed border-collapse">
             <thead>
               <tr className="bg-panel-raised">

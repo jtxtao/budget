@@ -115,6 +115,185 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/**
+ * A box a wide table scrolls inside, without the page scrolling with it.
+ *
+ * `overflow-x: auto` alone is not enough, and the reason is a Chrome behaviour
+ * this codebase already had to work around once: **a table's min-content width
+ * is counted against the _document's_ scroll width even when the table sits in
+ * an `overflow-x: auto` box.** The table scrolls inside its panel as intended
+ * *and* puts a second scrollbar under the whole page, which on a phone means
+ * every page drifts sideways under the thumb. `TransactionRegister` met this
+ * from the other side — it is why that table may never be given a `min-width`.
+ *
+ * `contain: paint` is what actually stops it: the box promises nothing paints
+ * outside it, so the table's width has nothing to say about the page's. Nothing
+ * else here changes — the element is already a scroll container, so the
+ * containment costs no visual difference at all.
+ *
+ * **It is not for the register**, and that is not an oversight: paint
+ * containment makes the box a containing block for `position: fixed`
+ * descendants, and `PayeeField`'s dropdown is fixed precisely so it can escape
+ * that table's scroll box. The register answers narrow screens by becoming a
+ * list of cards instead, which is a better answer than sideways scrolling
+ * through six columns anyway.
+ */
+.scroll-x {
+  overflow-x: auto;
+  contain: paint;
+}
+
+/**
+ * The register, as cards, on a screen too narrow to be a register.
+ *
+ * Six columns of a ledger come to 712px of fixed widths and a phone has 343 —
+ * and this is the one table that cannot be put in a `.scroll-x` box, because
+ * paint containment would become the containing block for `PayeeField`'s
+ * dropdown, which is fixed-positioned precisely so it can escape this table.
+ *
+ * So the table stops being a table below `sm`: every cell becomes a line, and
+ * `data-label` prints the heading the hidden `<thead>` used to carry. **It is
+ * the same cells**, which is the whole point — the register's editing contract
+ * is two hundred lines of blur-commits, two-faced money fields, remounted
+ * selects and split buttons, and a second implementation of it for narrow
+ * screens would be a second place for every one of those rules to drift. What
+ * changes here is layout and nothing else, so every rule, and every test that
+ * holds it, carries over untouched.
+ */
+@media (max-width: 639px) {
+  table.reflow,
+  table.reflow tbody,
+  table.reflow tfoot,
+  table.reflow tr,
+  table.reflow th,
+  table.reflow td {
+    display: block;
+    width: auto;
+  }
+
+  /* The headings move onto the cells themselves, below. */
+  table.reflow thead {
+    display: none;
+  }
+
+  /**
+   * Not a straight stack: seven cells one under another is a card the height of
+   * the screen, and a month of them is a scroll nobody finishes. The pairs that
+   * are read together get a line each — the date beside the way to remove the
+   * row, the two filings, the two directions — which is four lines rather than
+   * seven and keeps the shape of the register it came from.
+   */
+  table.reflow tbody tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 0 0.5rem;
+    align-items: start;
+    padding: 0.375rem 0.25rem;
+  }
+
+  table.reflow tbody tr + tr {
+    border-top: 1px solid rgb(var(--c-rule));
+  }
+
+  table.reflow td,
+  table.reflow th {
+    text-align: left;
+  }
+
+  table.reflow td[data-label="Date"] {
+    grid-column: 1 / 3;
+  }
+
+  /* The remove button is the only unlabelled cell, and it belongs beside the
+     date rather than alone at the foot of the card. */
+  table.reflow tbody td:not([data-label]):not([colspan]) {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  table.reflow td[data-label="Payee & note"] {
+    grid-column: 1 / -1;
+  }
+
+  table.reflow td[data-label="Category"] {
+    grid-column: 1;
+  }
+
+  table.reflow td[data-label="Account"] {
+    grid-column: 2 / -1;
+  }
+
+  table.reflow td[data-label="In"] {
+    grid-column: 1;
+  }
+
+  table.reflow td[data-label="Out"] {
+    grid-column: 2 / -1;
+  }
+
+  /* A row's error message, and the band and footing rows, each say one thing
+     across the whole width. */
+  table.reflow [colspan] {
+    grid-column: 1 / -1;
+  }
+
+  table.reflow td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.0625rem;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    line-height: 1rem;
+    text-transform: uppercase;
+    color: rgb(var(--c-ink-soft));
+  }
+
+  /* The band and the month's footing keep their own shape: a label on the left
+     and its figures after it, which is what they are for. */
+  table.reflow tbody tr:has(> th[scope="colgroup"]),
+  table.reflow tfoot tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 0.75rem;
+  }
+}
+
+/* A strip that scrolls because it has to, without a scrollbar drawn across the
+   page's chrome. Overlay scrollbars already behave this way on the touch
+   devices this is for; this is what keeps a desktop browser at a narrow width
+   from drawing a classic one through the header band. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* The type scale here is deliberately dense — `row` is 13px — and on a phone
+   that one fact makes every form in the app hostile: iOS Safari zooms the whole
+   page in whenever a field smaller than 16px takes focus, and it does not zoom
+   back out, so entering a transaction leaves the reader scrolled sideways
+   inside a page they then have to pinch their way out of.
+
+   Sixteen pixels is the threshold, so this says sixteen, and only below the
+   `sm` breakpoint — the dense scale is right on a screen with a pointer and
+   room, and wrong on the one surface where it costs the user the viewport. It
+   lives here rather than on each field because it is a property of the medium
+   rather than of any one form, and because a rule a new field has to remember
+   to opt into is one a new field will forget. */
+@media (max-width: 639px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

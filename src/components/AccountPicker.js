@@ -135,7 +135,7 @@ export default function AccountPicker({
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="scroll-x">
       <table className="w-full border-collapse">
         <thead>
           <tr className="bg-panel-raised">

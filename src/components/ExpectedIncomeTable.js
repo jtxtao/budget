@@ -52,7 +52,7 @@ export default function ExpectedIncomeTable({
           to work out whether your estimates fit inside what you earn.
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="scroll-x">
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-panel-raised">

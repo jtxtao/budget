@@ -51,8 +51,25 @@ function UpcomingRow({ row, striped, describe, onEnter, onSkip }) {
   const label = `${name} due ${formatDateMedium(row.date)}`;
 
   return (
-    <div className={`flex items-center gap-3 px-4 py-2 ${striped ? "bg-sheet-alt" : "bg-sheet"}`}>
-      <div className="min-w-0 flex-1">
+    /**
+     * **Two lines, at every width**, and that is not a mobile concession: this
+     * panel is a third of the dashboard's grid even on a wide screen, and
+     * everything on the row but the name has an irreducible width — a date, an
+     * amount and two buttons cannot be truncated and still mean anything. Put
+     * all four on one line and the only thing that can give is the payee, which
+     * is the one part a reader is scanning for; it came back as "Gr…" and
+     * "Riverl…" against a perfectly readable "4 DAYS AGO" beside it.
+     *
+     * So the name takes a line of its own and the rest share the next. What was
+     * a one-line row is now two, and two lines that say something beat one that
+     * does not.
+     */
+    <div
+      className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 ${
+        striped ? "bg-sheet-alt" : "bg-sheet"
+      }`}
+    >
+      <div className="min-w-0 flex-1 basis-full">
         <div className="truncate font-sans text-row text-ink">{name}</div>
         <div className="truncate font-mono text-label uppercase text-ink-soft">{filing}</div>
       </div>
@@ -71,7 +88,7 @@ function UpcomingRow({ row, striped, describe, onEnter, onSkip }) {
         </div>
       </div>
 
-      <span className="inline-flex shrink-0 items-center gap-1">
+      <span className="ml-auto inline-flex shrink-0 items-center gap-1">
         {/* Enter before Skip, and drawn as a button where Skip is bare text: the
             quiet one is the one that throws an occurrence away. */}
         <Button

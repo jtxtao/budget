@@ -49,44 +49,55 @@ export default function AppShell({ children }) {
   return (
     <div className="min-h-screen bg-ledger">
       <header className="bg-canopy">
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="flex flex-wrap items-center justify-between gap-4 pt-5">
-            <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
-              <span className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-on-canopy-soft">
-                <Elder className="h-9 w-10" />
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pt-4 sm:pt-5">
+            <div className="flex items-center gap-x-2.5 sm:gap-x-3.5">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-on-canopy-soft sm:h-11 sm:w-11">
+                <Elder className="h-7 w-8 sm:h-9 sm:w-10" />
               </span>
-              <span className="font-display text-2xl text-on-canopy">Household Books</span>
-              <span className="font-sans text-label font-bold uppercase text-on-canopy-soft">
-                Personal budget
-              </span>
+              <span className="font-display text-xl text-on-canopy sm:text-2xl">Canopy Budget</span>
             </div>
             {/* The switch is a preference about the screen and the account
                 control is who the books belong to, so identity sits at the
                 far edge where it has always been and the switch tucks in
                 beside it. */}
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <QuickEntry />
               <Button
                 variant="canopy"
-                className="rounded-full gap-2"
+                className="gap-2 rounded-full"
                 type="button"
                 aria-pressed={dark}
                 onClick={toggleTheme}
               >
                 {dark ? <MoonIcon /> : <SunIcon />}
-                Dark mode
+                {/* The icon already says which mode is on; the words are what
+                    makes it a labelled control, so they are kept for a screen
+                    reader and dropped from a phone's header, where this is the
+                    least important thing on the band. */}
+                <span className="sr-only sm:not-sr-only">Dark mode</span>
               </Button>
               <AccountControl />
             </div>
           </div>
-          <nav aria-label="Sections" className="mt-4 flex flex-wrap gap-x-7">
+          {/* **One row that scrolls, never a block that wraps.** Nine sections
+              wrap to three rows on a phone, which pushes the page itself below
+              the fold and makes the band the biggest thing on screen. A single
+              scrolling strip keeps the header one line high at every width, and
+              the negative margin lets it bleed to the screen edge so the last
+              tab is visibly cut off rather than looking like the end of the
+              list. `flex-wrap` returns once there is room for it. */}
+          <nav
+            aria-label="Sections"
+            className="no-scrollbar -mx-4 mt-3 flex gap-x-6 overflow-x-auto px-4 sm:mx-0 sm:mt-4 sm:flex-wrap sm:gap-x-7 sm:overflow-visible sm:px-0"
+          >
             {navigation.map(({ path, label }) => (
               <NavLink
                 key={path}
                 to={path}
                 end={path === "/"}
                 className={({ isActive }) =>
-                  `border-b-[3px] pb-2.5 pt-1 font-sans text-sm transition-colors ${
+                  `shrink-0 whitespace-nowrap border-b-[3px] pb-2.5 pt-1 font-sans text-sm transition-colors ${
                     isActive
                       ? "border-coin font-bold text-on-canopy"
                       : "border-transparent font-medium text-on-canopy-soft hover:border-on-canopy-soft/40 hover:text-on-canopy"
@@ -99,7 +110,10 @@ export default function AppShell({ children }) {
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-6 py-9">{children}</main>
+      {/* The bottom padding is for the entry bar that covers the foot of the
+          page on a phone — without it the last row of every table sits under
+          it. */}
+      <main className="mx-auto max-w-6xl px-4 py-6 pb-28 sm:px-6 sm:py-9 sm:pb-9">{children}</main>
     </div>
   );
 }
@@ -120,30 +134,39 @@ export default function AppShell({ children }) {
  * at all, and a closed dialog nobody asked for would put a second copy of every
  * field label on every page. Mounting it with `show` already true is still an
  * open — its re-seed effect runs on mount exactly as it does on a `show` flip.
+ *
+ * **On a phone the pair moves to a bar fixed across the foot of the screen**,
+ * which is where a thumb is and where the two things a household does most
+ * belong. It is the *same two buttons moved by CSS*, not a second copy rendered
+ * under a `sm:hidden` — a copy would be two "Add transaction" buttons in the
+ * accessibility tree at every width, since a media query is only a paint-time
+ * fact and nothing in the DOM says which of the two is the live one.
  */
 function QuickEntry() {
   const [kind, setKind] = useState(null);
 
   return (
     <>
-      <Button
-        variant="canopy"
-        className="rounded-full"
-        type="button"
-        onClick={() => setKind(TRANSACTION_KINDS.OUTFLOW)}
-      >
-        <span aria-hidden="true">+</span>
-        Add transaction
-      </Button>
-      <Button
-        variant="canopy"
-        className="rounded-full"
-        type="button"
-        onClick={() => setKind(TRANSACTION_KINDS.TRANSFER)}
-      >
-        <span aria-hidden="true">⇄</span>
-        Transfer
-      </Button>
+      <div className="fixed inset-x-0 bottom-0 z-30 flex gap-2 border-t border-on-canopy-soft/30 bg-canopy px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:static sm:z-auto sm:border-0 sm:bg-transparent sm:p-0">
+        <Button
+          variant="canopy"
+          className="flex-1 rounded-full py-2.5 sm:flex-none sm:py-2"
+          type="button"
+          onClick={() => setKind(TRANSACTION_KINDS.OUTFLOW)}
+        >
+          <span aria-hidden="true">+</span>
+          Add transaction
+        </Button>
+        <Button
+          variant="canopy"
+          className="flex-1 rounded-full py-2.5 sm:flex-none sm:py-2"
+          type="button"
+          onClick={() => setKind(TRANSACTION_KINDS.TRANSFER)}
+        >
+          <span aria-hidden="true">⇄</span>
+          Transfer
+        </Button>
+      </div>
       {kind != null && (
         <AddTransactionModal show defaultKind={kind} handleClose={() => setKind(null)} />
       )}
