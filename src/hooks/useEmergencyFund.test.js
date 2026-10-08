@@ -267,6 +267,27 @@ describe("what is held", () => {
     expect(read().heldCents).toBe(300000);
   });
 
+  test("only on-budget accounts are offered or counted", () => {
+    const BROKERAGE = account({
+      id: "acc-brk",
+      name: "Brokerage",
+      scope: "off-budget",
+      assetClass: "Stocks",
+      openingBalanceCents: 2000000,
+    });
+    const CARD = account({ id: "acc-card", name: "Card", type: "liability", scope: "credit-card" });
+    seed({
+      accounts: [SAVINGS, EVERYDAY, BROKERAGE, CARD],
+      emergencyFund: { targetSource: "months", monthsCovered: 6, accountIds: ["acc-save", "acc-brk"] },
+    });
+    const { read } = setup();
+
+    expect(read().accountRows.map((row) => row.account.id)).toEqual(["acc-save", "acc-cash"]);
+    // The brokerage ticked before stays in the record but counts nothing.
+    expect(read().fund.accountIds).toEqual(["acc-save", "acc-brk"]);
+    expect(read().heldCents).toBe(900000);
+  });
+
   test("an account that has since been deleted is inert rather than an error", () => {
     seed({ emergencyFund: { targetSource: "months", monthsCovered: 6, accountIds: ["gone"] } });
     const { read } = setup();

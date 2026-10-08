@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { ACCOUNT_SCOPES } from "../contexts/AccountsContext";
 import { PLAN_BUCKETS } from "../contexts/BudgetsContext";
 import { TARGET_SOURCES, useEmergencyFundPlan } from "../contexts/EmergencyFundContext";
 import useNetWorth from "./useNetWorth";
@@ -47,10 +48,13 @@ import { currentPeriod } from "../utils";
  * own arithmetic. One month of window, because all this needs is what each
  * account is worth today.
  *
- * **Signed, and a debt counts against the fund if it is ticked.** A liability in
- * the list is unusual but it is not an error — somebody may hold their buffer on
- * an offset mortgage — and the one sign convention the balance sheet uses
- * everywhere else is the one that keeps that honest.
+ * **Only on-budget accounts are offered or counted.** A buffer is cash the
+ * household can reach the week the income stops: a card is a debt rather than
+ * somewhere money is kept, and an off-budget holding is a brokerage or a
+ * retirement account, which is the retirement page's question. An id ticked
+ * before this narrowing is inert but kept, the store's rule for an account it
+ * cannot see — it counts nothing and comes back if the account is moved on
+ * budget. Signed all the same, on the balance sheet's one sign convention.
  *
  * Nothing here writes anything. The fund moves when the plan moves or when a
  * statement is entered, which is the entire reason it is derived rather than
@@ -60,9 +64,13 @@ export default function useEmergencyFund() {
   const { fund } = useEmergencyFundPlan();
   const { bucketRows } = usePlanHealth();
   // One month, not the chart's twelve, and `useNetWorth` rather than
-  // `useAccountBalances`: a fund held off budget is valued by hand, and the
-  // ledger alone would report it at its opening balance for ever.
-  const { rows } = useNetWorth(currentPeriod(), { months: 1 });
+  // `useAccountBalances`: a savings account reconciled by hand counts at the
+  // figure entered for it, which the ledger alone cannot know.
+  const { rows: allRows } = useNetWorth(currentPeriod(), { months: 1 });
+  const rows = useMemo(
+    () => allRows.filter((row) => row.account.scope === ACCOUNT_SCOPES.ON_BUDGET),
+    [allRows]
+  );
 
   return useMemo(() => {
     const essentials = bucketRows.find((row) => row.bucket === PLAN_BUCKETS.ESSENTIALS);
