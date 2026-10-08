@@ -5,8 +5,9 @@ const { contextBridge, ipcRenderer } = require("electron");
  *
  * The renderer runs sandboxed with no Node integration, so this file is the
  * whole surface: a snapshot of the books, four things that can be done to them,
- * and nothing else. There is deliberately no general "read a file" or "run a
- * command" here — every capability is one verb the app actually needs.
+ * two questions for the local model, and nothing else. There is deliberately no
+ * general "read a file" or "run a command" here — every capability is one verb
+ * the app actually needs.
  *
  * **The snapshot is fetched with `sendSync`, and that is not laziness.** Five
  * things in the app read storage before the first paint — `foldLegacyLedger`,
@@ -50,4 +51,13 @@ contextBridge.exposeInMainWorld("__hbDesktop", {
 
   /** Hand the user a file — the export, and the archive before a restore. */
   saveFile: (name, text) => ipcRenderer.invoke("books:saveFile", name, text),
+
+  /**
+   * The local model, through main. Two verbs and no more: whether Ollama is
+   * there, and "read this sentence into this shape". Neither can reach the
+   * books — the answer comes back to the page, which checks every name in it
+   * and opens an ordinary form. See `electron/assist.js`.
+   */
+  assistStatus: () => ipcRenderer.invoke("assist:status"),
+  assistAsk: (input) => ipcRenderer.invoke("assist:ask", input),
 });

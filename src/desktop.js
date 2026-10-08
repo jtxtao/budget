@@ -124,3 +124,39 @@ export async function saveFile(name, text) {
     return { ok: false, error: String(error?.message ?? error) };
   }
 }
+
+/**
+ * Whether the local model is there, and which models it has.
+ *
+ * `{ ok: true, models }`, or `{ ok: false, reason }` — `"unsupported"` in a
+ * browser, where there is no bridge and nothing to ask, and `"unreachable"`
+ * when Ollama is not running. See `electron/assist.js`.
+ */
+export async function assistStatus() {
+  const desktop = bridge();
+  if (!desktop?.assistStatus) return { ok: false, reason: "unsupported" };
+
+  try {
+    return (await desktop.assistStatus()) ?? { ok: false, reason: "bad-response" };
+  } catch (error) {
+    return { ok: false, reason: "bad-response", error: String(error?.message ?? error) };
+  }
+}
+
+/**
+ * Ask the local model to read a sentence into `schema`'s shape.
+ *
+ * Resolves to `{ ok: true, content }` with the parsed object — which is the
+ * model's reading and nothing more, so the caller checks every name in it
+ * against the books before anything is offered — or `{ ok: false, reason }`.
+ */
+export async function askAssistant({ model, messages, schema }) {
+  const desktop = bridge();
+  if (!desktop?.assistAsk) return { ok: false, reason: "unsupported" };
+
+  try {
+    return (await desktop.assistAsk({ model, messages, schema })) ?? { ok: false, reason: "bad-response" };
+  } catch (error) {
+    return { ok: false, reason: "bad-response", error: String(error?.message ?? error) };
+  }
+}

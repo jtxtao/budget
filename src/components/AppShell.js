@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import AddTransactionModal from "./AddTransactionModal";
+import AskModal from "./AskModal";
+import MoveMoneyModal from "./MoveMoneyModal";
 import { TRANSACTION_KINDS } from "../contexts/TransactionsContext";
 import { navigation } from "../navigation";
+import { currentPeriod } from "../utils";
 import Button from "./Button";
 import { AUTH_STATUS, useAuth } from "../contexts/AuthContext";
 import { SYNC_STATE, useSync } from "../contexts/SyncContext";
@@ -141,9 +144,22 @@ export default function AppShell({ children }) {
  * under a `sm:hidden` — a copy would be two "Add transaction" buttons in the
  * accessibility tree at every width, since a media query is only a paint-time
  * fact and nothing in the DOM says which of the two is the live one.
+ *
+ * **"Ask" is the third door, and the desktop app's alone**: a sentence read by
+ * a model on this computer (`AskModal`), which opens one of the two ordinary
+ * forms already filled in — this one, or `MoveMoneyModal`. Desktop only because
+ * the model is Ollama on the household's own machine, which is the only place
+ * the promise that nothing leaves it can be kept; the button is absent in a
+ * browser rather than present and refusing.
  */
 function QuickEntry() {
   const [kind, setKind] = useState(null);
+  const [asking, setAsking] = useState(false);
+  // What the assistant read, waiting in the form it belongs to. Held as the
+  // resolved object rather than rebuilt, so the forms' re-seed effects see one
+  // stable value for as long as they are open.
+  const [drafted, setDrafted] = useState(null);
+  const [moving, setMoving] = useState(null);
 
   return (
     <>
@@ -166,9 +182,51 @@ function QuickEntry() {
           <span aria-hidden="true">⇄</span>
           Transfer
         </Button>
+        {isDesktop() && (
+          <Button
+            variant="canopy"
+            className="flex-1 rounded-full py-2.5 sm:flex-none sm:py-2"
+            type="button"
+            onClick={() => setAsking(true)}
+          >
+            <span aria-hidden="true">✦</span>
+            Ask
+          </Button>
+        )}
       </div>
       {kind != null && (
         <AddTransactionModal show defaultKind={kind} handleClose={() => setKind(null)} />
+      )}
+      {asking && (
+        <AskModal
+          handleClose={() => setAsking(false)}
+          onDraft={(resolved) => {
+            setAsking(false);
+            setDrafted(resolved);
+          }}
+          onMove={(resolved) => {
+            setAsking(false);
+            setMoving(resolved);
+          }}
+        />
+      )}
+      {drafted != null && (
+        <AddTransactionModal
+          show
+          defaultKind={drafted.draft.kind}
+          draft={drafted.draft}
+          notes={drafted.notes}
+          handleClose={() => setDrafted(null)}
+        />
+      )}
+      {moving != null && (
+        <MoveMoneyModal
+          show
+          period={currentPeriod()}
+          seed={moving.seed}
+          notes={moving.notes}
+          handleClose={() => setMoving(null)}
+        />
       )}
     </>
   );

@@ -83,11 +83,21 @@ import { amountAtRest, currentPeriod, formatCents, toCents, todayISO } from "../
  * the date and the category, and clears what is particular to one receipt — the
  * payee, the amount, the note and any division — with the caret back in the
  * first field. Entering a shoebox of receipts is one form, not one form each.
+ *
+ * **`draft` opens it already filled in** — the assistant's reading of a
+ * sentence, resolved to ids by `resolveReading` in `src/assistant.js`. It is
+ * applied on open exactly where the defaults are, and nothing about the form
+ * changes because of it: every field can still be corrected, submit still runs
+ * every check, and the store still has the last word. `notes` are the places
+ * the reading did not line up with the books, said above the fields so the
+ * person knows which ones to look at before saving.
  */
 export default function AddTransactionModal({
   show,
   defaultKind = TRANSACTION_KINDS.OUTFLOW,
   defaultBudgetId,
+  draft,
+  notes,
   handleClose,
 }) {
   const formRef = useRef();
@@ -107,13 +117,18 @@ export default function AddTransactionModal({
   // render. **Nothing is written to the payee store until submit**: a form
   // abandoned half-typed must not leave a payee behind, which is the rule the
   // register's cell cannot keep and this one can.
-  const [payeeId, setPayeeId] = useState(null);
-  const [payeeName, setPayeeName] = useState("");
+  const [payeeId, setPayeeId] = useState(draft?.payeeId ?? null);
+  const [payeeName, setPayeeName] = useState(draft?.payeeName ?? "");
   // Whether the user has answered the category question themselves. A payee's
   // default is a *default*, so it stops applying the moment there is a real
   // answer to overwrite — `AddBudgetModal`'s rule for a bucket following a group,
   // and its reason: a choice already made is not a default.
   const chosenBudgetRef = useRef(false);
+  // A draft's category, waiting for its select. A transfer out of the budget
+  // only grows a category field once its two accounts are in state, which is a
+  // render after the one that seeds them, so the answer is held here and
+  // applied by the effect below whenever the field is there to take it.
+  const pendingBudgetRef = useRef(null);
   // The amount as it stands while it is being typed, which the split editor
   // needs to say how much of it is still unplaced. Read from the field's own
   // `onChange` rather than from a ref, since a ref cannot make anything
@@ -213,25 +228,40 @@ export default function AddTransactionModal({
     setSplitting(false);
     setParts([]);
     setTotalCents(null);
-    setPayeeId(null);
-    setPayeeName("");
+    setPayeeId(draft?.payeeId ?? null);
+    setPayeeName(draft?.payeeName ?? "");
     setLastAdded(null);
     setOpenCount((count) => count + 1);
-    chosenBudgetRef.current = false;
+    chosenBudgetRef.current = Boolean(draft?.budgetId);
+    pendingBudgetRef.current = draft?.budgetId ?? null;
     // The accounts last used this way, where there are any. Otherwise a spending
     // account wherever there is one: it is where money comes from and where a
     // transfer almost always starts. The destination is whatever else exists,
-    // since a transfer to the account it came from is no movement at all.
+    // since a transfer to the account it came from is no movement at all. A
+    // draft's accounts win where it names one this direction offers.
+    const offered = defaultKind === TRANSACTION_KINDS.TRANSFER ? accounts : spendable;
+    const drafted = (id) => (offered.some((account) => account.id === id) ? id : null);
     const [recentFrom, recentTo] = recentAccounts(defaultKind);
-    const from = recentFrom ?? spendable[0]?.id ?? accounts[0]?.id ?? "";
+    const from = drafted(draft?.accountId) ?? recentFrom ?? spendable[0]?.id ?? accounts[0]?.id ?? "";
     setFromAccountId(from);
-    setToAccountId(recentTo ?? accounts.find((account) => account.id !== from)?.id ?? "");
+    const draftedTo = draft?.toAccountId !== from ? drafted(draft?.toAccountId) : null;
+    setToAccountId(
+      draftedTo ??
+        (recentTo !== from ? recentTo : null) ??
+        accounts.find((account) => account.id !== from)?.id ??
+        ""
+    );
     // Absent while the modal is showing the "nothing to book against" message,
     // which renders in place of the form.
     if (!formRef.current) return;
 
     formRef.current.reset();
-    dateRef.current.value = todayISO();
+    dateRef.current.value = draft?.date ?? todayISO();
+    if (draft) {
+      amountRef.current.value = amountAtRest(draft.amountCents);
+      setTotalCents(draft.amountCents ?? null);
+      descriptionRef.current.value = draft.description ?? "";
+    }
     // Absent while there are no categories at all, which only money-in can
     // reach. Money out falls back to the first category; money in falls back to
     // none, because the common inflow is a paycheque and a refund is the one the
@@ -248,7 +278,18 @@ export default function AddTransactionModal({
     // them would re-seed the form out from under the user as they type elsewhere
     // in the app. Their contents are read at open, which is when this runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [show, defaultKind, defaultBudgetId]);
+  }, [show, defaultKind, defaultBudgetId, draft]);
+
+  // A draft's category, the first render its select exists in. Declared after
+  // the re-seed effect so it runs after it in the same commit and wins over the
+  // default that effect writes. Only a category that is still on offer is
+  // taken, the rule `defaultBudgetId` keeps above.
+  useEffect(() => {
+    const pending = pendingBudgetRef.current;
+    if (!pending || !budgetIdRef.current) return;
+    if (budgets.some((budget) => budget.id === pending)) budgetIdRef.current.value = pending;
+    pendingBudgetRef.current = null;
+  });
 
   // After "add another", the caret goes back to the top of the form, which is
   // the payee where there is one and the amount on a transfer.
@@ -532,6 +573,16 @@ export default function AddTransactionModal({
         </div>
       ) : (
         <form ref={formRef} onSubmit={handleSubmit}>
+          {notes?.length > 0 && (
+            <ul
+              aria-label="Check before saving"
+              className="mb-5 list-disc border-l-2 border-azure py-1 pl-7 pr-3 font-sans text-row text-chalk-soft"
+            >
+              {notes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          )}
           {/* The payee leads, because it is the first thing anybody knows about a
               transaction and because what it is filed under can follow from it. A
               transfer has no payee at all — it moves money between the

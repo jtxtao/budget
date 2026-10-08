@@ -39,8 +39,11 @@ import { amountAtRest, amountField, formatCents, formatPeriod, toCents } from ".
  * dashboard can open it on a short category with the pool already picked and
  * the shortfall already typed. The pool is not a row, so its before-and-after
  * is the pool figure itself, held to the same red rule as everything else.
+ *
+ * `notes` are the assistant's, when it opened this from a sentence: the places
+ * its reading did not line up with the books, said above the fields.
  */
-export default function MoveMoneyModal({ show, period, seed, handleClose }) {
+export default function MoveMoneyModal({ show, period, seed, notes, handleClose }) {
   const formRef = useRef();
   const [error, setError] = useState(null);
   // A mirror of the three fields, for the read-out only. The form is still what
@@ -136,6 +139,16 @@ export default function MoveMoneyModal({ show, period, seed, handleClose }) {
         </p>
       ) : (
         <form ref={formRef} onSubmit={handleSubmit} onChange={recompute}>
+          {notes?.length > 0 && (
+            <ul
+              aria-label="Check before saving"
+              className="mb-5 list-disc border-l-2 border-azure py-1 pl-7 pr-3 font-sans text-row text-chalk-soft"
+            >
+              {notes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className={labelClass} htmlFor="move-from">

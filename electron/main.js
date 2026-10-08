@@ -12,6 +12,7 @@ const {
 const fs = require("fs");
 const path = require("path");
 const books = require("./books");
+const assist = require("./assist");
 
 /**
  * The desktop shell.
@@ -418,6 +419,11 @@ function start() {
     shell.showItemInFolder(books.booksPath());
     return { ok: true };
   });
+
+  // The assistant. Asked from here rather than from the page so the page's own
+  // egress stays exactly what it was — see `electron/assist.js`.
+  ipcMain.handle("assist:status", () => assist.status());
+  ipcMain.handle("assist:ask", (_event, input) => assist.ask(input));
 
   ipcMain.handle("books:saveFile", async (event, name, text) => {
     const win = BrowserWindow.fromWebContents(event.sender);
