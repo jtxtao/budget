@@ -137,6 +137,7 @@ export default function useGiving(year) {
           recipientId: recipient?.id ?? null,
           deductibleCents: recipient && !recipient.deductible ? 0 : givenCents,
           acknowledged: false,
+          receipt: null,
           auto: true,
         });
       }
@@ -197,6 +198,7 @@ export default function useGiving(year) {
         // outlived it — and the row prints it as a gap to be refiled.
         recipientName: recipient?.name ?? null,
         acknowledged: donation.acknowledged,
+        receipt: donation.receipt ?? null,
         needsAcknowledgment,
         returned,
         auto: donation.auto === true,

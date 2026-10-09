@@ -160,3 +160,39 @@ export async function askAssistant({ model, messages, schema }) {
     return { ok: false, reason: "bad-response", error: String(error?.message ?? error) };
   }
 }
+
+/**
+ * Receipt files, on this computer's disk — three verbs, each about one file
+ * named by its id, and nothing that reads a path the page chose. See
+ * `electron/receipts.js`. Each reports `{ ok: false, unsupported: true }` in a
+ * browser, where `src/receipts.js` never asks.
+ */
+export async function putReceiptFile(id, ext, bytes) {
+  const desktop = bridge();
+  if (!desktop?.receiptPut) return { ok: false, unsupported: true };
+  try {
+    return (await desktop.receiptPut(id, ext, bytes)) ?? { ok: false };
+  } catch (error) {
+    return { ok: false, error: String(error?.message ?? error) };
+  }
+}
+
+export async function openReceiptFile(id) {
+  const desktop = bridge();
+  if (!desktop?.receiptOpen) return { ok: false, unsupported: true };
+  try {
+    return (await desktop.receiptOpen(id)) ?? { ok: false };
+  } catch (error) {
+    return { ok: false, error: String(error?.message ?? error) };
+  }
+}
+
+export async function removeReceiptFile(id) {
+  const desktop = bridge();
+  if (!desktop?.receiptRemove) return { ok: false, unsupported: true };
+  try {
+    return (await desktop.receiptRemove(id)) ?? { ok: false };
+  } catch (error) {
+    return { ok: false, error: String(error?.message ?? error) };
+  }
+}

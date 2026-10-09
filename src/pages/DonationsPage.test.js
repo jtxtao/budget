@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import AppProviders from "../contexts/AppProviders";
 import DonationsPage from "./DonationsPage";
@@ -224,7 +224,13 @@ describe("recording a gift", () => {
     });
     // And nothing about the money is copied into the statement.
     expect(stored("donations")).toEqual([
-      { transactionId: logged.id, recipientId: RED_CROSS.id, deductibleCents: 30000, acknowledged: false },
+      {
+        transactionId: logged.id,
+        recipientId: RED_CROSS.id,
+        deductibleCents: 30000,
+        acknowledged: false,
+        receipt: null,
+      },
     ]);
   });
 
@@ -441,7 +447,13 @@ describe("gifts from the giving category", () => {
       target: { value: RED_CROSS.id },
     });
     expect(stored("donations")).toEqual([
-      { transactionId: given.id, recipientId: RED_CROSS.id, deductibleCents: 20000, acknowledged: false },
+      {
+        transactionId: given.id,
+        recipientId: RED_CROSS.id,
+        deductibleCents: 20000,
+        acknowledged: false,
+        receipt: null,
+      },
     ]);
   });
 
@@ -453,5 +465,106 @@ describe("gifts from the giving category", () => {
     fireEvent.click(screen.getByRole("button", { name: "Not a donation: spring appeal" }));
     expect(screen.queryByText("spring appeal")).not.toBeInTheDocument();
     expect(stored("transactions")).toHaveLength(1);
+  });
+});
+
+describe("receipt files", () => {
+  // jsdom has no IndexedDB, so a browser without an account keeps its receipts
+  // in memory here — the same three verbs, which is what the page relies on.
+  const pdf = (name = "letter.pdf", type = "application/pdf") =>
+    new File(["%PDF-1.4 thank you"], name, { type });
+
+  const fileInput = (transactionId) => screen.getByTestId(`receipt-file-${transactionId}`);
+
+  test("attaching a file describes it on the gift and ticks the receipt box", async () => {
+    const big = gift(`${YEAR}-03-04`, 30000, "Gala");
+    seed({ transactions: [big], donations: [tag(big.id, RED_CROSS.id, 30000)] });
+    renderPage();
+    expect(screen.getByText("Needed")).toBeInTheDocument();
+
+    fireEvent.change(fileInput(big.id), { target: { files: [pdf()] } });
+
+    expect(
+      await screen.findByRole("button", { name: "Open receipt for Gala: letter.pdf" })
+    ).toBeInTheDocument();
+    // The store writes storage in an effect, and this write came after an await.
+    await waitFor(() => expect(stored("donations")[0].acknowledged).toBe(true));
+    const [donation] = stored("donations");
+    expect(donation.receipt).toEqual({
+      id: expect.any(String),
+      name: "letter.pdf",
+      type: "application/pdf",
+      sizeBytes: 18,
+      addedOn: todayISO(),
+      storedIn: "browser",
+    });
+    expect(screen.queryByText("Needed")).not.toBeInTheDocument();
+  });
+
+  test("a file that cannot be a receipt is refused and nothing is written", async () => {
+    const big = gift(`${YEAR}-03-04`, 30000, "Gala");
+    seed({ transactions: [big], donations: [tag(big.id, RED_CROSS.id, 30000)] });
+    renderPage();
+
+    fireEvent.change(fileInput(big.id), {
+      target: { files: [pdf("notes.txt", "text/plain")] },
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Attach a PDF or a photo");
+    expect(stored("donations")[0].receipt).toBeNull();
+  });
+
+  test("removing the file leaves the receipt box ticked", async () => {
+    const big = gift(`${YEAR}-03-04`, 30000, "Gala");
+    seed({ transactions: [big], donations: [tag(big.id, RED_CROSS.id, 30000)] });
+    renderPage();
+    fireEvent.change(fileInput(big.id), { target: { files: [pdf()] } });
+    await screen.findByRole("button", { name: /Open receipt for Gala/ });
+
+    await waitFor(() => expect(stored("donations")[0].receipt).not.toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove receipt for Gala" }));
+
+    expect(stored("donations")[0]).toMatchObject({ receipt: null, acknowledged: true });
+    expect(screen.getByRole("button", { name: "Attach receipt for Gala" })).toBeInTheDocument();
+  });
+
+  test("a gift read off the giving category is tagged by attaching to it", async () => {
+    // Paid to a payee named like the organization, so the row already knows
+    // where it went — a gift with no organization cannot be recorded yet.
+    const given = { ...gift(`${YEAR}-03-04`, 30000, "spring appeal"), payeeId: "p1" };
+    seed({
+      transactions: [given],
+      payees: [{ id: "p1", name: "Red Cross", defaultBudgetId: null }],
+    });
+    renderPage();
+
+    fireEvent.change(fileInput(given.id), { target: { files: [pdf()] } });
+    await screen.findByRole("button", { name: /Open receipt for Red Cross/ });
+
+    await waitFor(() => expect(stored("donations")).toHaveLength(1));
+    expect(stored("donations")).toEqual([
+      expect.objectContaining({
+        transactionId: given.id,
+        acknowledged: true,
+        receipt: expect.objectContaining({ name: "letter.pdf" }),
+      }),
+    ]);
+  });
+
+  test("restating a gift keeps the file it already has", async () => {
+    const big = gift(`${YEAR}-03-04`, 30000, "Gala");
+    seed({ transactions: [big], donations: [tag(big.id, RED_CROSS.id, 30000)] });
+    renderPage();
+    fireEvent.change(fileInput(big.id), { target: { files: [pdf()] } });
+    await screen.findByRole("button", { name: /Open receipt for Gala/ });
+    await waitFor(() => expect(stored("donations")[0].receipt).not.toBeNull());
+
+    type(screen.getByLabelText("Deductible amount for Gala"), "200");
+
+    expect(stored("donations")[0]).toMatchObject({
+      deductibleCents: 20000,
+      receipt: expect.objectContaining({ name: "letter.pdf" }),
+    });
   });
 });

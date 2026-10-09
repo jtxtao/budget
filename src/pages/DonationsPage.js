@@ -15,6 +15,7 @@ import { useDonations } from "../contexts/DonationsContext";
 import { useBudgets } from "../contexts/BudgetsContext";
 import { usePayees } from "../contexts/PayeesContext";
 import useGiving from "../hooks/useGiving";
+import { deleteReceipt, openReceipt, saveReceipt } from "../receipts";
 import { formatCents, todayISO } from "../utils";
 
 /**
@@ -89,10 +90,43 @@ export default function DonationsPage() {
           recipientId: row.recipientId,
           deductibleCents: row.deductibleCents,
           acknowledged: row.acknowledged,
+          receipt: row.receipt,
           ...patch,
         })
       : updateDonation(patch);
     setError(result.ok ? null : result.error);
+    return result;
+  }
+
+  /**
+   * Attach the charity's receipt to a gift. The file is stored first (see
+   * `src/receipts.js`) and only then described on the gift — which also ticks
+   * the receipt box, since a receipt on file is the acknowledgment in hand. If
+   * the gift refuses the description, the file is deleted again so nothing is
+   * left stored with nothing pointing at it. A file already attached is
+   * replaced, and deleted once the new one is on the gift.
+   */
+  async function handleAttachReceipt(row, file) {
+    const saved = await saveReceipt(file);
+    if (!saved.ok) return saved;
+    const result = handleDonationChange({
+      transactionId: row.transactionId,
+      receipt: saved.receipt,
+      acknowledged: true,
+    });
+    if (!result.ok) {
+      deleteReceipt(saved.receipt);
+      return result;
+    }
+    if (row.receipt) deleteReceipt(row.receipt);
+    return result;
+  }
+
+  // Taking the file off leaves the box as it is: a paper copy in a drawer is
+  // still an acknowledgment in hand.
+  function handleRemoveReceipt(row) {
+    const result = handleDonationChange({ transactionId: row.transactionId, receipt: null });
+    if (result.ok && row.receipt) deleteReceipt(row.receipt);
     return result;
   }
 
@@ -204,6 +238,9 @@ export default function DonationsPage() {
               onChange={handleDonationChange}
               onRemove={handleUntag}
               onAdd={() => setShowDonationModal(true)}
+              onAttachReceipt={handleAttachReceipt}
+              onRemoveReceipt={handleRemoveReceipt}
+              onOpenReceipt={(row) => openReceipt(row.receipt)}
             />
 
             {/* Only when the year on screen is empty and the books are not: a

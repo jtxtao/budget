@@ -5,7 +5,8 @@ const { contextBridge, ipcRenderer } = require("electron");
  *
  * The renderer runs sandboxed with no Node integration, so this file is the
  * whole surface: a snapshot of the books, four things that can be done to them,
- * two questions for the local model, and nothing else. There is deliberately no
+ * two questions for the local model, three verbs on receipt files, and nothing
+ * else. There is deliberately no
  * general "read a file" or "run a command" here — every capability is one verb
  * the app actually needs.
  *
@@ -60,4 +61,13 @@ contextBridge.exposeInMainWorld("__hbDesktop", {
    */
   assistStatus: () => ipcRenderer.invoke("assist:status"),
   assistAsk: (input) => ipcRenderer.invoke("assist:ask", input),
+
+  /**
+   * Receipt files, kept beside the books. Each verb is about one receipt the
+   * page has an id for — write it, open it in the system's viewer, delete it —
+   * and none takes a path. See `electron/receipts.js`.
+   */
+  receiptPut: (id, ext, bytes) => ipcRenderer.invoke("receipts:put", id, ext, bytes),
+  receiptOpen: (id) => ipcRenderer.invoke("receipts:open", id),
+  receiptRemove: (id) => ipcRenderer.invoke("receipts:remove", id),
 });

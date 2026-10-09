@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Button from "./Button";
 import { ACKNOWLEDGMENT_THRESHOLD_CENTS } from "../contexts/DonationsContext";
+import { RECEIPT_ACCEPT, formatFileSize } from "../receipts";
 import { amountAtRest, amountEditing, formatCents, formatDayShort, toCents } from "../utils";
 
 /**
@@ -48,7 +49,7 @@ const COLUMNS = [
   // outgrows its column overflows into the next one rather than pushing it
   // along, so the two that can are the two that are given room.
   { key: "deductible", label: "Deductible", width: "w-24", numeric: true },
-  { key: "receipt", label: "Receipt", width: "w-24" },
+  { key: "receipt", label: "Receipt", width: "w-28" },
 ];
 
 const LEAD_SPAN = COLUMNS.findIndex((column) => column.numeric);
@@ -143,7 +144,123 @@ function DeductibleCell({ row, onCommit, onReject }) {
   );
 }
 
-function DonationRow({ row, index, recipients, error, onCommit, onReject, onRemove }) {
+/**
+ * Whether the charity's acknowledgment is in hand, and the file itself.
+ *
+ * The box is the statement and the file is the evidence, and they are kept
+ * apart: a paper receipt in a drawer is an acknowledgment in hand with nothing
+ * attached, so ticking the box never asks for a file. Attaching one ticks the
+ * box (the page does that, in the same write), and taking it off leaves the box
+ * alone. Attaching is the one thing on this row that waits on something — the
+ * file has to be stored before the gift can describe it — so it is the one cell
+ * with a busy state.
+ */
+function ReceiptCell({ row, label, onCommit, onReject, onAttach, onDetach, onOpen }) {
+  const inputRef = useRef();
+  const [busy, setBusy] = useState(false);
+  const canFile = Boolean(onAttach) && !row.returned;
+
+  async function handleFile(event) {
+    const file = event.target.files?.[0];
+    // Cleared at once, so choosing the same file again still fires a change.
+    event.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    const result = await onAttach(row, file);
+    setBusy(false);
+    if (!result.ok) onReject(row, result.error);
+  }
+
+  async function handleOpen() {
+    const result = await onOpen(row);
+    if (!result.ok) onReject(row, result.error);
+  }
+
+  const linkClass =
+    "font-mono text-label uppercase text-azure underline underline-offset-2 hover:text-ink disabled:no-underline disabled:opacity-60";
+
+  return (
+    <td data-label="Receipt" className="px-3 py-1">
+      {/* A gift big enough to need a written acknowledgment says so until it
+          has one; a smaller one still gets the box, because keeping the
+          receipt is a habit rather than a threshold. */}
+      <label className="flex cursor-pointer items-center gap-2">
+        <input
+          type="checkbox"
+          checked={row.acknowledged}
+          aria-label={`Acknowledgment received for ${label}`}
+          onChange={(event) => onCommit(row, { acknowledged: event.target.checked })}
+          className="h-3.5 w-3.5 shrink-0 accent-ink-soft"
+        />
+        {row.needsAcknowledgment && (
+          <span className="font-mono text-label uppercase text-vermilion-ink">Needed</span>
+        )}
+      </label>
+      {canFile && (
+        <div className="mt-0.5 flex items-center gap-2">
+          {busy ? (
+            <span className="font-mono text-label uppercase text-ink-soft">Saving…</span>
+          ) : row.receipt ? (
+            <>
+              <button
+                type="button"
+                onClick={handleOpen}
+                title={`${row.receipt.name} · ${formatFileSize(row.receipt.sizeBytes)}`}
+                aria-label={`Open receipt for ${label}: ${row.receipt.name}`}
+                className={linkClass}
+              >
+                View
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const result = onDetach(row);
+                  if (!result.ok) onReject(row, result.error);
+                }}
+                aria-label={`Remove receipt for ${label}`}
+                className="font-mono text-label uppercase text-ink-soft hover:text-vermilion-ink"
+              >
+                ×
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              aria-label={`Attach receipt for ${label}`}
+              className={linkClass}
+            >
+              Attach
+            </button>
+          )}
+          <input
+            ref={inputRef}
+            type="file"
+            accept={RECEIPT_ACCEPT}
+            onChange={handleFile}
+            className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
+            data-testid={`receipt-file-${row.transactionId}`}
+          />
+        </div>
+      )}
+    </td>
+  );
+}
+
+function DonationRow({
+  row,
+  index,
+  recipients,
+  error,
+  onCommit,
+  onReject,
+  onRemove,
+  onAttach,
+  onDetach,
+  onOpen,
+}) {
   const label = nameOf(row);
   // The current organisation always has an option, even one the list would not
   // offer — a gift whose organisation was removed. Without it the select would
@@ -190,23 +307,15 @@ function DonationRow({ row, index, recipients, error, onCommit, onReject, onRemo
           {formatCents(row.amountCents)}
         </td>
         <DeductibleCell row={row} onCommit={onCommit} onReject={onReject} />
-        <td data-label="Receipt" className="px-3 py-1">
-          {/* A gift big enough to need a written acknowledgment says so until it
-              has one; a smaller one still gets the box, because keeping the
-              receipt is a habit rather than a threshold. */}
-          <label className="flex cursor-pointer items-center gap-2">
-            <input
-              type="checkbox"
-              checked={row.acknowledged}
-              aria-label={`Acknowledgment received for ${label}`}
-              onChange={(event) => onCommit(row, { acknowledged: event.target.checked })}
-              className="h-3.5 w-3.5 shrink-0 accent-ink-soft"
-            />
-            {row.needsAcknowledgment && (
-              <span className="font-mono text-label uppercase text-vermilion-ink">Needed</span>
-            )}
-          </label>
-        </td>
+        <ReceiptCell
+          row={row}
+          label={label}
+          onCommit={onCommit}
+          onReject={onReject}
+          onAttach={onAttach}
+          onDetach={onDetach}
+          onOpen={onOpen}
+        />
         <td className="px-1 py-1 text-right">
           <Button
             variant="row"
@@ -242,6 +351,9 @@ export default function DonationList({
   onChange,
   onRemove,
   onAdd,
+  onAttachReceipt,
+  onRemoveReceipt,
+  onOpenReceipt,
 }) {
   // One at a time, keyed on the row it belongs to: a rejection is a reply to the
   // edit just made, and a page of stale messages would say nothing about the
@@ -315,6 +427,9 @@ export default function DonationList({
                   onCommit={commit}
                   onReject={reject}
                   onRemove={onRemove}
+                  onAttach={onAttachReceipt}
+                  onDetach={onRemoveReceipt}
+                  onOpen={onOpenReceipt}
                 />
               ))}
             </tbody>
@@ -351,7 +466,8 @@ export default function DonationList({
       )}
 
       <p className="border-t border-edge px-4 py-2.5 font-sans text-row text-chalk-soft">
-        The organization, the deductible part and the receipt are set here. The amount, the date and
+        The organization, the deductible part and the receipt — ticked, with the charity’s letter
+        attached if you have it as a file — are set here. The amount, the date and
         what it was for belong to the money itself —{" "}
         <Link
           to="/transactions"

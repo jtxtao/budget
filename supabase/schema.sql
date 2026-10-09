@@ -145,3 +145,57 @@ $$;
 -- one — which, in the SQL editor, rejects the *whole* script before any of it
 -- runs, so this line failing means nothing above it was applied either.
 alter table public.app_state replica identity full;
+
+-- ---------------------------------------------------------------------------
+-- Receipt files
+-- ---------------------------------------------------------------------------
+-- The charity's written acknowledgment of a gift, as a PDF or a photo. A file
+-- is not a document, so it does not go in app_state: every store there is
+-- pushed whole on every write, and a few scans as base64 would make every edit
+-- to a gift re-send megabytes. The donation record carries a description of
+-- the file (see `src/receipts.js`); the bytes live here.
+--
+-- PRIVATE, so nothing is served by URL; the app downloads through the API with
+-- the user's own session. Each account's files sit under a folder named by its
+-- user id — `<uid>/<receipt id>.<ext>` — and that first path segment is the
+-- whole of the policy, the same predicate as app_state's one step over.
+--
+-- The size cap and the types are also stated in `src/receipts.js` and
+-- `electron/receipts.js`; change one, change all three.
+--
+-- Closing an account does not reach in here: Storage keeps objects apart from
+-- auth.users, so a deleted user's receipts stay until removed by hand.
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'receipts',
+  'receipts',
+  false,
+  10485760,
+  array['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif']
+)
+on conflict (id) do update
+  set public = excluded.public,
+      file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "receipts owner read" on storage.objects;
+create policy "receipts owner read"
+  on storage.objects
+  for select
+  to authenticated
+  using (bucket_id = 'receipts' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "receipts owner insert" on storage.objects;
+create policy "receipts owner insert"
+  on storage.objects
+  for insert
+  to authenticated
+  with check (bucket_id = 'receipts' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "receipts owner delete" on storage.objects;
+create policy "receipts owner delete"
+  on storage.objects
+  for delete
+  to authenticated
+  using (bucket_id = 'receipts' and (storage.foldername(name))[1] = auth.uid()::text);

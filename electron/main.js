@@ -13,6 +13,7 @@ const fs = require("fs");
 const path = require("path");
 const books = require("./books");
 const assist = require("./assist");
+const receipts = require("./receipts");
 
 /**
  * The desktop shell.
@@ -424,6 +425,20 @@ function start() {
   // egress stays exactly what it was — see `electron/assist.js`.
   ipcMain.handle("assist:status", () => assist.status());
   ipcMain.handle("assist:ask", (_event, input) => assist.ask(input));
+
+  // Receipt files beside the books. Three verbs, each about one id the page
+  // minted — see `electron/receipts.js`.
+  ipcMain.handle("receipts:put", (_event, id, ext, bytes) =>
+    receipts.put(app.getPath("userData"), id, ext, bytes)
+  );
+  ipcMain.handle("receipts:open", async (_event, id) => {
+    const file = receipts.locate(app.getPath("userData"), id);
+    if (!file) return { ok: false, error: "The receipt could not be found on this computer." };
+    // `openPath` answers with an error message, or "" when it worked.
+    const failed = await shell.openPath(file);
+    return failed ? { ok: false, error: failed } : { ok: true };
+  });
+  ipcMain.handle("receipts:remove", (_event, id) => receipts.remove(app.getPath("userData"), id));
 
   ipcMain.handle("books:saveFile", async (event, name, text) => {
     const win = BrowserWindow.fromWebContents(event.sender);

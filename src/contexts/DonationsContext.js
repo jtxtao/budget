@@ -1,6 +1,7 @@
-import React, { useCallback, useContext, useMemo } from "react";
+import React, { useCallback, useContext, useMemo, useRef } from "react";
 import { v4 as uuidV4 } from "uuid";
 import useSyncedState from "../hooks/useSyncedState";
+import { deleteReceipt, isReceipt } from "../receipts";
 import { toBps, toCents } from "../utils";
 
 /**
@@ -21,7 +22,7 @@ import { toBps, toCents } from "../utils";
  * Three record shapes, in three keys:
  *
  *   recipient { id, name, deductible }
- *   donation  { transactionId, recipientId, deductibleCents, acknowledged }
+ *   donation  { transactionId, recipientId, deductibleCents, acknowledged, receipt }
  *   goal      { year, source, amountCents, shareBps }
  *
  * **`deductibleCents` is stated on every donation — there is no "ask the
@@ -70,6 +71,8 @@ export const DEFAULT_GOAL_SOURCE = GOAL_SOURCES.AMOUNT;
  * they can still be asked for.
  */
 export const ACKNOWLEDGMENT_THRESHOLD_CENTS = 25000;
+
+const RECEIPT_ERROR = "That receipt could not be recorded. Attach the file again.";
 
 /** A goal above everything the household earned is a typo, not an intention. */
 export const MAX_GOAL_SHARE_BPS = 10000;
@@ -137,6 +140,9 @@ function migrateDonations(stored) {
       recipientId: donation.recipientId ?? null,
       deductibleCents: isAmount(donation.deductibleCents) ? donation.deductibleCents : 0,
       acknowledged: donation.acknowledged === true,
+      // The charity's acknowledgment as a file — a description of it, never the
+      // bytes (see `src/receipts.js`). Null is no file, which is most gifts.
+      receipt: isReceipt(donation.receipt) ? donation.receipt : null,
     }));
 }
 
@@ -198,6 +204,11 @@ export const DonationsProvider = ({ children }) => {
     migrateRecipients
   );
   const [donations, setDonations] = useSyncedState("donations", [], migrateDonations);
+  // Read by the two mutators that need the record already there — to keep or to
+  // delete its file — without making them change identity on every write, which
+  // would ripple through `deleteTransaction` to every consumer of the ledger.
+  const donationsRef = useRef(donations);
+  donationsRef.current = donations;
   const [goals, setGoals] = useSyncedState("donationGoals", [], migrateGoals);
   const [givingSettings, setGivingSettings] = useSyncedState(
     "givingSettings",
@@ -334,18 +345,27 @@ export const DonationsProvider = ({ children }) => {
    * the ledger, and `deleteTransaction` clears the tag on its way out.
    */
   const recordDonation = useCallback(
-    ({ transactionId, recipientId, deductible, deductibleCents, acknowledged = false }) => {
+    ({ transactionId, recipientId, deductible, deductibleCents, acknowledged = false, receipt }) => {
       if (!transactionId) return { ok: false, error: "That transaction is no longer in the ledger." };
       if (!recipientId) return { ok: false, error: "Choose which organization this went to." };
 
       const cents = readDeductible({ deductible, deductibleCents });
       if (cents == null) return { ok: false, error: AMOUNT_ERROR };
 
+      if (receipt != null && !isReceipt(receipt)) return { ok: false, error: RECEIPT_ERROR };
+
+      // Restating a gift keeps the file it already has unless told otherwise: a
+      // receipt is not one of the answers a restatement is giving, and dropping
+      // it would leave the file stored with nothing pointing at it.
+      const kept = donationsRef.current.find(
+        (donation) => donation.transactionId === transactionId
+      )?.receipt;
       const record = {
         transactionId,
         recipientId,
         deductibleCents: cents,
         acknowledged: acknowledged === true,
+        receipt: receipt === undefined ? kept ?? null : receipt,
       };
 
       setDonations((previous) => [
@@ -391,6 +411,15 @@ export const DonationsProvider = ({ children }) => {
 
       if ("acknowledged" in patch) changes.acknowledged = patch.acknowledged === true;
 
+      // Attaching or taking off the file. The bytes are already stored, or
+      // already deleted, by the time this is asked — see `src/receipts.js`.
+      if ("receipt" in patch) {
+        if (patch.receipt != null && !isReceipt(patch.receipt)) {
+          return { ok: false, error: RECEIPT_ERROR };
+        }
+        changes.receipt = patch.receipt ?? null;
+      }
+
       // Nothing actually moved. Writing anyway would re-render every consumer of
       // this store for a cell the user only tabbed through.
       const moved = Object.keys(changes).some((field) => changes[field] !== current[field]);
@@ -417,9 +446,15 @@ export const DonationsProvider = ({ children }) => {
    */
   const removeDonation = useCallback(
     ({ transactionId }) => {
+      // The file goes with the statement it belonged to. Best effort and after
+      // the fact: a stray file costs some space, and nothing reads it.
+      const receipt = donationsRef.current.find(
+        (donation) => donation.transactionId === transactionId
+      )?.receipt;
       setDonations((previous) =>
         previous.filter((donation) => donation.transactionId !== transactionId)
       );
+      if (receipt) deleteReceipt(receipt);
       return { ok: true };
     },
     [setDonations]
