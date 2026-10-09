@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { useBudgets } from "../contexts/BudgetsContext";
-import { FUNDING, fundingStatus } from "../fundingStatus";
 import { toSections } from "../planLayout";
 import useEnvelopes from "./useEnvelopes";
 
@@ -41,7 +40,7 @@ import useEnvelopes from "./useEnvelopes";
 const isEmpty = (row) => !row.availableCents && !row.assignedCents && !row.activityCents;
 
 function toRow(row, extra) {
-  const base = {
+  return {
     budgetId: row.budgetId,
     name: row.name,
     carriedInCents: row.carriedInCents,
@@ -56,26 +55,6 @@ function toRow(row, extra) {
     // difference as a dash rather than as $0.
     goalCents: row.goalCents,
     ...extra,
-  };
-  // How the row stands against its estimate — see `src/fundingStatus.js`. A
-  // reading of the figures above and nothing else, so it lives on the row
-  // rather than being worked out again wherever the row is drawn.
-  return { ...base, funding: fundingStatus(base) };
-}
-
-/**
- * How many categories are short, and by how much in all — what the dashboard
- * says above the table. Overspent and underfunded both count: either way the
- * envelope will not see the month out.
- */
-function shortfallOf(rows) {
-  const short = rows.filter(
-    (row) =>
-      row.funding.status === FUNDING.OVERSPENT || row.funding.status === FUNDING.UNDERFUNDED
-  );
-  return {
-    count: short.length,
-    cents: short.reduce((sum, row) => sum + row.funding.shortCents, 0),
   };
 }
 
@@ -153,7 +132,14 @@ export default function useDashboard(period) {
       otherRows,
       otherTotals: sumRows(otherRows),
       totals: sumRows(allRows),
-      shortfall: shortfallOf(allRows),
+      // The whole plan's monthly figure — every category's standing estimate,
+      // read off the budgets rather than the rows, since a planned category
+      // nobody has funded or spent from yet is pruned from the rows and is
+      // exactly the one that leaves the month short of its plan. **This is the
+      // one funding question the dashboard asks**: whether the month as a whole
+      // has been budgeted up to the plan, not how that is split between
+      // categories.
+      plannedCents: budgets.reduce((sum, budget) => sum + (budget.plannedCents ?? 0), 0),
       availableToBudgetCents: envelopes.toBeAssignedCents,
       periodIncomeCents: envelopes.periodIncomeCents,
       periodBudgetedCents: envelopes.periodAssignedCents,

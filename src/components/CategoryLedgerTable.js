@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 import Button from "./Button";
 import { SortableList, useSortableItem } from "./Sortable";
-import { FUNDING, FUNDING_LABELS } from "../fundingStatus";
 import { formatCents } from "../utils";
 
 /**
@@ -30,27 +29,16 @@ import { formatCents } from "../utils";
  * category part-way through saving, which is what every goal looks like
  * until the day it is met.
  *
- * **Funding is a reading against the plan, not a second definition of trouble**,
- * and it is carried by **the category's own name** — red only when Available
- * is below zero, yellow for money left that will not see the month out, green
- * for the month covered or a goal reached. `src/fundingStatus.js` is the rule; this file only maps it to tones.
+ * **A row is coloured by the sign of what it holds and nothing else** — green
+ * with money in it, grey at zero, red below — the way Actual reads a balance.
+ * There is no per-category reading against the estimate: the household budgets
+ * to an overall figure and does not mind how it is split, so a category holding
+ * less than its own estimate is not a warning. The one funding question the
+ * page asks is about the whole month, and it is the footing's Budgeted figure,
+ * yellow while the month is budgeted below the plan's total estimate.
  *
- * It was a column of its own, and the column was the wrong shape for it: a
- * reading that applies to the whole row does not need a cell, and spending a
- * sixth of the table's width restating five words down a list is width taken
- * from the figures the page exists to show — on a third of the dashboard's
- * grid, it was enough to push the panel beside it off the page. The name is
- * the row's subject, so colouring it says "this category" rather than "this
- * cell", and the stripe down the left edge was already repeating the colour
- * for a reader running an eye down the list.
- *
- * **Colour is still not the only channel.** The gap is named in words beside
- * any row that has one, which is the only reading a household can act on; the
- * other three are announced to a screen reader from the same cell, so the row
- * reads "Rent, on track" however it is reached; and the key above the table
- * says what the colours mean. A category with no estimate keeps the ordinary
- * ink and gets no stripe, because there is nothing for it to be short of —
- * greying it would read as a category switched off rather than unplanned.
+ * An overspent row still says by how much beside its name, in words, so red is
+ * never the only thing saying it.
  *
  * **The Available figure is also the control that moves it.** Noticing that a
  * category is short and doing something about it are one thought, so they are
@@ -85,58 +73,30 @@ const visibility = (column) => (column.wide ? "hidden sm:table-cell" : "");
 const headCell = "whitespace-nowrap px-3 py-2 text-right font-mono text-label uppercase text-chalk";
 
 /**
- * The dashboard's three colours, in whole class names so Tailwind's scanner
- * finds them (see `bucketTones.js`). **The colour follows what the envelope
- * holds**, not how it got there: red is the app's one definition of trouble —
- * Available below zero — and nothing else. A category that is short of the
- * rest of its month but still holds money is yellow, so moving money out of
- * it to cover a neighbour does not paint it red. Green is a category that
- * holds what its month still needs (on track or a month ahead) or has
- * reached its goal.
+ * What a row holds, as a tone — whole class names, never interpolated (see
+ * `bucketTones.js`). Red is the app's one definition of trouble; grey is an
+ * empty envelope, which is not trouble; green is money in it.
  */
-export const FUNDING_TONES = {
-  [FUNDING.OVERSPENT]: { stripe: "border-l-vermilion", dot: "bg-vermilion", text: "text-vermilion" },
-  [FUNDING.UNDERFUNDED]: { stripe: "border-l-sulfur", dot: "bg-sulfur", text: "text-sulfur" },
-  [FUNDING.ON_TRACK]: { stripe: "border-l-verdant", dot: "bg-verdant", text: "text-verdant" },
-  [FUNDING.WELL_FUNDED]: { stripe: "border-l-verdant", dot: "bg-verdant", text: "text-verdant" },
-  // The ordinary ink, not a grey: a category nobody has written an estimate for
-  // is unplanned, and a greyed-out name reads as one that has been switched off.
-  [FUNDING.NO_ESTIMATE]: { stripe: "border-l-transparent", dot: "bg-rule", text: "text-ink" },
-};
-
-/** The legend's three, in the order a reader is asked to care about them. */
-const LEGEND = [
-  { tone: FUNDING_TONES[FUNDING.OVERSPENT], label: "Overspent" },
-  { tone: FUNDING_TONES[FUNDING.UNDERFUNDED], label: "Short" },
-  { tone: FUNDING_TONES[FUNDING.ON_TRACK], label: "Funded" },
-];
+function availableTone(cents) {
+  if (cents < 0) return "font-medium text-vermilion-ink";
+  if (cents === 0) return "text-ink-soft";
+  return "font-medium text-verdant";
+}
 
 /**
- * The category's name, carrying its funding reading.
- *
- * The name is the row's subject, so the tone belongs on it. The word itself is
- * only *spoken* — a screen reader gets "Rent, on track" — except where there is
- * a gap, which is printed, because a figure is the one reading a household can
- * do something about and "$600 short" says more than "underfunded" does.
+ * The category's name, and — only where the envelope is overdrawn — by how
+ * much, so the red figure beside it is never the only thing saying so.
  */
 function NameCell({ row }) {
-  const tone = FUNDING_TONES[row.funding.status];
-  const short = row.funding.shortCents > 0;
+  const over = row.availableCents < 0;
   return (
-    <th
-      scope="row"
-      className={`border-l-4 ${tone.stripe} px-4 py-2 text-left font-sans text-row font-normal`}
-    >
-      <span className={short ? `font-medium ${tone.text}` : tone.text}>{row.name}</span>
-      <span className="sr-only">, {FUNDING_LABELS[row.funding.status].toLowerCase()}</span>
-      {short && (
+    <th scope="row" className="px-4 py-2 text-left font-sans text-row font-normal text-ink">
+      <span className={over ? "font-medium text-vermilion-ink" : undefined}>{row.name}</span>
+      {over && (
         // Its own line on a phone, where the name and two figures already fill
         // the width; beside the name wherever there is room for it.
-        <span
-          className={`block whitespace-nowrap font-mono text-label tabular-nums sm:ml-2 sm:inline ${tone.text}`}
-        >
-          {formatCents(row.funding.shortCents)}{" "}
-          {row.funding.status === FUNDING.OVERSPENT ? "over" : "short"}
+        <span className="block whitespace-nowrap font-mono text-label tabular-nums text-vermilion-ink sm:ml-2 sm:inline">
+          {formatCents(-row.availableCents)} over
         </span>
       )}
     </th>
@@ -186,11 +146,7 @@ function Figure({ cents, tone = "text-ink", onClick, label, className = "" }) {
  */
 function cellFor(row, key) {
   if (key === "availableCents") {
-    // The one definition of trouble: the envelope is empty and still paying
-    // out. The figure takes the row's colour, since the colour is a reading of
-    // this figure.
-    const tone = row.availableCents < 0 ? "font-medium text-vermilion-ink" : `font-medium ${FUNDING_TONES[row.funding.status].text}`;
-    return { cents: row.availableCents, tone };
+    return { cents: row.availableCents, tone: availableTone(row.availableCents) };
   }
   if (key === "goalCents") return { cents: row.goalCents, tone: "text-ink-soft" };
   return { cents: row[key], tone: "text-ink" };
@@ -198,8 +154,7 @@ function cellFor(row, key) {
 
 /** What clicking a row's Available figure will do, said before the click. */
 function moveLabel(row) {
-  if (row.funding.status === FUNDING.OVERSPENT) return `Cover ${row.name}`;
-  if (row.funding.status === FUNDING.UNDERFUNDED) return `Fund ${row.name}`;
+  if (row.availableCents < 0) return `Cover ${row.name}`;
   return `Move money out of ${row.name}`;
 }
 
@@ -300,7 +255,7 @@ export default function CategoryLedgerTable({
   otherRows,
   otherTotals,
   totals,
-  shortfall,
+  plannedCents = 0,
   onMove,
   onAssign,
   onReorderRows,
@@ -311,6 +266,11 @@ export default function CategoryLedgerTable({
   // The zebra runs across the whole table rather than restarting under each
   // band, so two rows of the same shade never end up either side of a heading.
   let stripe = 0;
+
+  // The month budgeted below the plan's total estimate — the one funding
+  // reading on the page, and on the whole rather than on any one category.
+  const underPlanCents =
+    plannedCents > 0 && totals.budgetedCents < plannedCents ? plannedCents - totals.budgetedCents : 0;
 
   return (
     <section className="overflow-hidden rounded-2xl border border-edge bg-panel">
@@ -337,39 +297,6 @@ export default function CategoryLedgerTable({
           </div>
         )}
       </div>
-
-      {!empty && (
-        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-edge px-4 py-2">
-          {/* What the colours mean, said once where they are first seen. */}
-          <ul aria-label="Funding key" className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            {LEGEND.map(({ tone, label }) => (
-              <li
-                key={label}
-                className="flex items-center gap-1.5 font-mono text-label uppercase text-chalk-soft"
-              >
-                <span aria-hidden="true" className={`h-2 w-2 rounded-full ${tone.dot}`} />
-                {label}
-              </li>
-            ))}
-            <li className="font-sans text-row text-chalk-soft">against each monthly estimate</li>
-          </ul>
-          {shortfall && (
-            <p className="font-sans text-row text-chalk-soft">
-              {shortfall.count === 0 ? (
-                "Every planned category can see the month out."
-              ) : (
-                <>
-                  <span className="font-medium text-vermilion">
-                    {shortfall.count} {shortfall.count === 1 ? "category" : "categories"} short
-                  </span>{" "}
-                  by {formatCents(shortfall.cents)} in all. Click a short category’s Available
-                  figure to fund it.
-                </>
-              )}
-            </p>
-          )}
-        </div>
-      )}
 
       {empty ? (
         <p className="px-4 py-5 font-sans text-row text-chalk-soft">
@@ -445,14 +372,24 @@ export default function CategoryLedgerTable({
                 >
                   All categories
                 </th>
-                {COLUMNS.map((column) => (
-                  <td
-                    key={column.key}
-                    className={`whitespace-nowrap px-3 py-2 text-right font-mono text-row font-medium tabular-nums text-chalk ${visibility(column)}`}
-                  >
-                    {totals[column.key] == null ? "" : formatCents(totals[column.key])}
-                  </td>
-                ))}
+                {COLUMNS.map((column) => {
+                  const short = column.key === "budgetedCents" && underPlanCents > 0;
+                  return (
+                    <td
+                      key={column.key}
+                      className={`whitespace-nowrap px-3 py-2 text-right font-mono text-row font-medium tabular-nums ${
+                        short ? "text-sulfur" : "text-chalk"
+                      } ${visibility(column)}`}
+                    >
+                      {totals[column.key] == null ? "" : formatCents(totals[column.key])}
+                      {short && (
+                        <span className="sr-only">
+                          , {formatCents(underPlanCents)} below the {formatCents(plannedCents)} plan
+                        </span>
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
             </tfoot>
           </table>

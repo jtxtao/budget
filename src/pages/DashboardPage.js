@@ -15,7 +15,6 @@ import { TO_BE_ASSIGNED } from "../contexts/constants";
 import { usePayees } from "../contexts/PayeesContext";
 import { useSchedules } from "../contexts/SchedulesContext";
 import { TRANSACTION_KINDS, useTransactions } from "../contexts/TransactionsContext";
-import { FUNDING } from "../fundingStatus";
 import useAccountBalances from "../hooks/useAccountBalances";
 import useDashboard from "../hooks/useDashboard";
 import useNextPaycheck from "../hooks/useNextPaycheck";
@@ -171,11 +170,10 @@ export default function DashboardPage() {
   }
 
   /**
-   * Open the move on a category, with the direction read off its funding.
+   * Open the move on a category, with the direction read off what it holds.
    *
-   * A row that is short — overspent, or underfunded against its estimate — is
-   * one somebody wants to *fund*, so it seeds as the destination with the
-   * shortfall already typed in. The source is "to be assigned" whenever the
+   * An overspent row is one somebody wants to *cover*, so it seeds as the
+   * destination with the overspend already typed in. The source is "to be assigned" whenever the
    * pool can cover that figure, since unassigned money is the first place a
    * household looks; otherwise it is left for them to pick, because which
    * neighbour gives something up is not the app's call. Any other row has
@@ -188,8 +186,8 @@ export default function DashboardPage() {
       setMoving({});
       return;
     }
-    const { status, shortCents } = row.funding;
-    if (status === FUNDING.OVERSPENT || status === FUNDING.UNDERFUNDED) {
+    if (row.availableCents < 0) {
+      const shortCents = -row.availableCents;
       setMoving({
         fromBudgetId:
           dashboard.availableToBudgetCents >= shortCents ? TO_BE_ASSIGNED : undefined,
@@ -235,6 +233,7 @@ export default function DashboardPage() {
         availableToBudgetCents={dashboard.availableToBudgetCents}
         periodIncomeCents={dashboard.periodIncomeCents}
         budgetedCents={dashboard.periodBudgetedCents}
+        plannedCents={dashboard.plannedCents}
         spentCents={netSpentCents}
         refundCents={dashboard.periodRefundCents}
         fundedCents={fundedCents}
@@ -264,7 +263,7 @@ export default function DashboardPage() {
             otherRows={dashboard.otherRows}
             otherTotals={dashboard.otherTotals}
             totals={dashboard.totals}
-            shortfall={dashboard.shortfall}
+            plannedCents={dashboard.plannedCents}
             onMove={handleMove}
             onAssign={() => setAssigning(true)}
             onReorderRows={reorderBudgets}

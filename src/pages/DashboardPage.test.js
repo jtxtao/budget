@@ -76,10 +76,8 @@ function renderPage() {
 /**
  * The row of a table whose first cell holds this name.
  *
- * Matched on the opening of the accessible name rather than the whole of it: a
- * category row's header now also speaks its funding reading ("Rent, on track"),
- * which is the point of carrying that reading on the name instead of in a
- * column of its own.
+ * Matched on the opening of the accessible name rather than the whole of it: an
+ * overdrawn category's header also says by how much ("Groceries$400 over").
  */
 const row = (name) =>
   screen
@@ -482,41 +480,47 @@ describe("what is due", () => {
   });
 });
 
-describe("funding against the estimate", () => {
-  // The reading lives on the name now, not in a column of its own: the word is
-  // spoken from the row header and the gap, where there is one, is printed
-  // beside it.
-  const funding = (name) => within(row(name)).getByRole("rowheader").textContent;
+describe("funding against the plan", () => {
+  const name = (category) => within(row(category)).getByRole("rowheader").textContent;
+  const budgetedTile = () => screen.getByText("Budgeted this month").closest("div");
 
-  test("each row says how it stands against its estimate, in words", () => {
+  test("a category is not judged against its own estimate", () => {
     seed();
     renderPage();
 
-    // Rent: $1,500 planned, $1,200 spent, $300 left — exactly what the month
-    // still asks of it.
-    expect(funding("Rent")).toBe("Rent, on track");
-    // Groceries: $600 planned and nothing in it.
-    expect(funding("Groceries")).toBe("Groceries, underfunded$600 short");
-    expect(screen.getByText(/1 category short/)).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "Funding key" })).toHaveTextContent(
-      /Overspent.*Short.*Funded/
-    );
+    // Groceries: $600 planned and nothing in it — an empty envelope, not a
+    // warning, since the household budgets to the whole and not per category.
+    expect(name("Groceries")).toBe("Groceries");
+    expect(screen.queryByText(/short$/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Funding key" })).not.toBeInTheDocument();
   });
 
-  test("a month ahead is well funded, and an underfunded row opens to fund it", () => {
+  test("the month budgeted below the plan's total is yellow and says by how much", () => {
+    seed();
+    renderPage();
+
+    // $1,500 budgeted against $2,100 planned across Rent and Groceries.
+    const budgeted = within(budgetedTile()).getByText("$1,500");
+    expect(budgeted).toHaveClass("text-sulfur");
+    expect(budgetedTile()).toHaveTextContent("$600 short of the $2,100 plan");
+
+    const footing = within(screen.getByRole("rowheader", { name: "All categories" }).closest("tr"));
+    expect(footing.getAllByRole("cell")[1]).toHaveClass("text-sulfur");
+    expect(footing.getAllByRole("cell")[1]).toHaveTextContent("$600 below the $2,100 plan");
+  });
+
+  test("a month budgeted up to the plan is not yellow, however it is split", () => {
     seed({
-      assignments: [{ id: "as1", budgetId: "b1", period: PERIOD, assignedCents: 300000 }],
+      // All of it in Rent and none in Groceries: the split is the household's
+      // business, the total is what is measured.
+      assignments: [{ id: "as1", budgetId: "b1", period: PERIOD, assignedCents: 210000 }],
       accounts: [{ ...ACCOUNT, openingBalanceCents: 500000 }],
     });
     renderPage();
 
-    // $1,800 left against $300 still to go this month and $1,500 next month.
-    expect(funding("Rent")).toBe("Rent, well funded");
-
-    fireEvent.click(screen.getByRole("button", { name: "Fund Groceries" }));
-    expect(screen.getByLabelText("Move from")).toHaveValue("to-be-assigned");
-    expect(screen.getByLabelText("Move to")).toHaveValue("b2");
-    expect(screen.getByLabelText("Amount to move")).toHaveValue("$600");
+    expect(within(budgetedTile()).getByText("$2,100")).not.toHaveClass("text-sulfur");
+    expect(budgetedTile()).toHaveTextContent("Matches the $2,100 plan");
+    expect(name("Groceries")).toBe("Groceries");
   });
 
   test("assign income opens from the categories panel", () => {
@@ -557,8 +561,7 @@ describe("moving money between categories", () => {
   }
 
   function amounts() {
-    // Available is the row's first cell again, now that the funding reading is
-    // carried by the name rather than by a column of its own.
+    // Available is the row's first cell; the name is its header.
     return {
       rent: within(row("Rent")).getAllByRole("cell")[0].textContent,
       groceries: within(row("Groceries")).getAllByRole("cell")[0].textContent,

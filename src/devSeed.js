@@ -6,8 +6,8 @@
  * dashes and nothing worth looking at. This file writes a household detailed
  * enough that each page has something to say: thirteen months of transactions,
  * a plan that nearly balances, statements on the holdings, goals part-funded,
- * gifts tagged, points banked, and one category deliberately in each of the five
- * funding states.
+ * gifts tagged, points banked, and categories steered so the dashboard shows an
+ * overdrawn envelope, an empty one and full ones.
  *
  * **It is required from `index.js` inside a `process.env.NODE_ENV` check**, which
  * is how it stays out of the production bundle: webpack folds the condition at
@@ -502,8 +502,8 @@ function derivedAt(rows, accountId, period) {
  *
  * Every month but this one is funded at the plan's own estimate, which is what a
  * household following its plan actually does — and what leaves the sinking funds
- * carrying a balance. **This month is derived rather than typed**, so the five
- * funding readings land whatever day of the month the seed is run on: the figure
+ * carrying a balance. **This month is derived rather than typed**, so the
+ * steered balances land whatever day of the month the seed is run on: the figure
  * is chosen to leave each engineered category at a stated `available`, and
  * `available = carriedIn + assigned + activity` is solved for `assigned`.
  */
@@ -539,9 +539,9 @@ function buildAssignments(rows) {
   }
 
   /**
-   * Five categories are *steered* to a stated balance, one per funding reading,
-   * so the dashboard's Funding column carries every colour and every word
-   * whatever day of the month this runs on.
+   * Five categories are *steered* to a stated balance, so the dashboard shows
+   * an overdrawn envelope, an empty one and full ones whatever day of the month
+   * this runs on.
    *
    * Everything else is simply funded at its estimate, which is what the month
    * being funded means — and it is the reason this is a lookup rather than a

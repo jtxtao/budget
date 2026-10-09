@@ -27,6 +27,37 @@ function availableTone(cents) {
   return { text: "text-verdant", label: "All assigned", mood: ELDER_MOODS.CONTENT };
 }
 
+/**
+ * The month's budgeting against the plan's total estimate — the one funding
+ * reading on the dashboard. The household budgets to an overall figure and
+ * does not mind how it is split, so this is asked of the month as a whole and
+ * never of a category: yellow while the month is budgeted below the plan.
+ */
+function budgetedTone(budgetedCents, plannedCents, categoryCount) {
+  if (plannedCents <= 0) {
+    return {
+      text: "text-azure",
+      note:
+        categoryCount === 0
+          ? "No categories"
+          : `Across ${categoryCount} ${categoryCount === 1 ? "category" : "categories"}`,
+    };
+  }
+  if (budgetedCents < plannedCents) {
+    return {
+      text: "text-sulfur",
+      note: `${formatCents(plannedCents - budgetedCents)} short of the ${formatCents(plannedCents)} plan`,
+    };
+  }
+  if (budgetedCents > plannedCents) {
+    return {
+      text: "text-azure",
+      note: `${formatCents(budgetedCents - plannedCents)} over the ${formatCents(plannedCents)} plan`,
+    };
+  }
+  return { text: "text-azure", note: `Matches the ${formatCents(plannedCents)} plan` };
+}
+
 function Tile({ label, figure, tone = "text-chalk", note, mood }) {
   return (
     <div className={`relative bg-panel px-4 py-3 ${mood ? "pr-20" : ""}`}>
@@ -49,6 +80,7 @@ export default function DashboardSummary({
   availableToBudgetCents,
   periodIncomeCents,
   budgetedCents,
+  plannedCents = 0,
   spentCents,
   refundCents,
   fundedCents,
@@ -56,6 +88,7 @@ export default function DashboardSummary({
   paycheck,
 }) {
   const tone = availableTone(availableToBudgetCents);
+  const budgeted = budgetedTone(budgetedCents, plannedCents, categoryCount);
 
   return (
     <section className="overflow-hidden rounded-2xl border border-edge bg-panel">
@@ -79,12 +112,8 @@ export default function DashboardSummary({
         <Tile
           label="Budgeted this month"
           figure={formatCents(budgetedCents)}
-          tone="text-azure"
-          note={
-            categoryCount === 0
-              ? "No categories"
-              : `Across ${categoryCount} ${categoryCount === 1 ? "category" : "categories"}`
-          }
+          tone={budgeted.text}
+          note={budgeted.note}
         />
         {/* Net of refunds: money paid back into a category undoes that much of
             what it spent, which is how the category's own row already reads it

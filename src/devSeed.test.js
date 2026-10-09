@@ -6,7 +6,6 @@ import { useTransactions } from "./contexts/TransactionsContext";
 import { useSavingsGoals } from "./contexts/SavingsGoalsContext";
 import useEnvelopes from "./hooks/useEnvelopes";
 import useDashboard from "./hooks/useDashboard";
-import { FUNDING } from "./fundingStatus";
 import { STORE_KEYS } from "./storage";
 import { demoBooks } from "./devSeed";
 import { currentPeriod } from "./utils";
@@ -94,7 +93,7 @@ test("the pool is left holding a month's worth of unassigned pay", () => {
   expect(result.current.toBeAssignedCents).toBeLessThan(500000);
 });
 
-test("one category sits in each of the five funding readings", () => {
+test("one category is overdrawn, one empty and the rest hold money", () => {
   const { result } = renderHook(() => useDashboard(currentPeriod()), { wrapper });
 
   const byName = new Map();
@@ -103,9 +102,9 @@ test("one category sits in each of the five funding readings", () => {
   }
   for (const row of result.current.otherRows) byName.set(row.name, row);
 
-  expect(byName.get("Groceries").funding.status).toBe(FUNDING.OVERSPENT);
-  expect(byName.get("Dining out").funding.status).toBe(FUNDING.UNDERFUNDED);
-  expect(byName.get("Rent").funding.status).toBe(FUNDING.ON_TRACK);
-  expect(byName.get("Utilities").funding.status).toBe(FUNDING.WELL_FUNDED);
-  expect(byName.get("Miscellaneous").funding.status).toBe(FUNDING.NO_ESTIMATE);
+  expect(byName.get("Groceries").availableCents).toBeLessThan(0);
+  expect(byName.get("Rent").availableCents).toBe(0);
+  expect(byName.get("Dining out").availableCents).toBeGreaterThan(0);
+  expect(byName.get("Utilities").availableCents).toBeGreaterThan(0);
+  expect(byName.get("Miscellaneous").availableCents).toBeGreaterThan(0);
 });
