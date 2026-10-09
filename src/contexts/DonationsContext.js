@@ -155,6 +155,42 @@ function migrateGoals(stored) {
     }));
 }
 
+/**
+ * Which categories are giving, and which of their outflows are not.
+ *
+ * **Spending filed under a giving category is a gift without being tagged one**
+ * — the household already said so when it filed it, and asking again on this
+ * page was the step everybody skipped. `budgetIds: null` means "whatever is
+ * named like giving" (`isGivingName`), resolved where it is read, so a category
+ * added later called "Donations" is picked up without a visit here; a list is a
+ * choice the household made and replaces the guess. `excludedIds` is the
+ * transactions in those categories the household has said are not gifts — the
+ * untag button on a row nobody tagged.
+ */
+export const DEFAULT_GIVING_SETTINGS = { budgetIds: null, excludedIds: [] };
+
+const GIVING_NAME = /\b(donat|giving|charit|tith|offering)/i;
+
+/** A category name that reads as giving — the guess used until one is chosen. */
+export const isGivingName = (name) => GIVING_NAME.test(name ?? "");
+
+/** The category ids counting as giving, under the settings and the live plan. */
+export function givingBudgetIds(settings, budgets) {
+  if (Array.isArray(settings?.budgetIds)) return new Set(settings.budgetIds);
+  return new Set(budgets.filter((budget) => isGivingName(budget.name)).map((budget) => budget.id));
+}
+
+const readIds = (value) =>
+  Array.isArray(value) ? [...new Set(value.filter((id) => typeof id === "string"))] : null;
+
+function migrateGivingSettings(stored) {
+  const settings = stored && typeof stored === "object" ? stored : {};
+  return {
+    budgetIds: readIds(settings.budgetIds),
+    excludedIds: readIds(settings.excludedIds) ?? [],
+  };
+}
+
 export const DonationsProvider = ({ children }) => {
   const [recipients, setRecipients] = useSyncedState(
     "donationRecipients",
@@ -163,6 +199,36 @@ export const DonationsProvider = ({ children }) => {
   );
   const [donations, setDonations] = useSyncedState("donations", [], migrateDonations);
   const [goals, setGoals] = useSyncedState("donationGoals", [], migrateGoals);
+  const [givingSettings, setGivingSettings] = useSyncedState(
+    "givingSettings",
+    DEFAULT_GIVING_SETTINGS,
+    migrateGivingSettings
+  );
+
+  /** Choose which categories are giving; `null` goes back to guessing by name. */
+  const setGivingCategories = useCallback(
+    (budgetIds) => {
+      const ids = budgetIds === null ? null : readIds(budgetIds);
+      if (budgetIds !== null && ids == null) {
+        return { ok: false, error: "Choose which categories are giving." };
+      }
+      setGivingSettings((previous) => ({ ...previous, budgetIds: ids }));
+      return { ok: true };
+    },
+    [setGivingSettings]
+  );
+
+  /** A transaction in a giving category that is not a gift — or is again. */
+  const setGiftExcluded = useCallback(
+    ({ transactionId, excluded }) => {
+      setGivingSettings((previous) => {
+        const rest = previous.excludedIds.filter((id) => id !== transactionId);
+        return { ...previous, excludedIds: excluded ? [...rest, transactionId] : rest };
+      });
+      return { ok: true };
+    },
+    [setGivingSettings]
+  );
 
   /**
    * Add an organisation. Returns a result rather than throwing: the caller has
@@ -435,6 +501,7 @@ export const DonationsProvider = ({ children }) => {
       recipients,
       donations,
       goals,
+      givingSettings,
       addRecipient,
       updateRecipient,
       deleteRecipient,
@@ -442,11 +509,16 @@ export const DonationsProvider = ({ children }) => {
       updateDonation,
       removeDonation,
       setGivingGoal,
+      setGivingCategories,
+      setGiftExcluded,
     }),
     [
       recipients,
       donations,
       goals,
+      givingSettings,
+      setGivingCategories,
+      setGiftExcluded,
       addRecipient,
       updateRecipient,
       deleteRecipient,

@@ -427,3 +427,31 @@ describe("the year", () => {
     expect(tile("Given")).toBe("$200");
   });
 });
+
+describe("gifts from the giving category", () => {
+  test("appear without being tagged, and picking the organization writes the tag", () => {
+    const given = gift(`${YEAR}-03-04`, 20000, "spring appeal");
+    seed({ transactions: [given] });
+    renderPage();
+
+    expect(screen.getByText("spring appeal")).toBeInTheDocument();
+    expect(stored("donations") ?? []).toEqual([]);
+
+    fireEvent.change(screen.getByLabelText("Organization for spring appeal"), {
+      target: { value: RED_CROSS.id },
+    });
+    expect(stored("donations")).toEqual([
+      { transactionId: given.id, recipientId: RED_CROSS.id, deductibleCents: 20000, acknowledged: false },
+    ]);
+  });
+
+  test("untagging one keeps it off the page and the money on the register", () => {
+    const given = gift(`${YEAR}-03-04`, 20000, "spring appeal");
+    seed({ transactions: [given] });
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Not a donation: spring appeal" }));
+    expect(screen.queryByText("spring appeal")).not.toBeInTheDocument();
+    expect(stored("transactions")).toHaveLength(1);
+  });
+});

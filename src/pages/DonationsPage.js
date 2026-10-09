@@ -4,6 +4,7 @@ import AddDonationModal from "../components/AddDonationModal";
 import AddOrganizationModal from "../components/AddOrganizationModal";
 import Button from "../components/Button";
 import DonationList from "../components/DonationList";
+import GivingCategoriesPanel from "../components/GivingCategoriesPanel";
 import GivingGoalPanel from "../components/GivingGoalPanel";
 import GivingSummary from "../components/GivingSummary";
 import OrganizationList from "../components/OrganizationList";
@@ -11,6 +12,7 @@ import PageHeader from "../components/PageHeader";
 import Placeholder from "../components/Placeholder";
 import YearStepper from "../components/YearStepper";
 import { useDonations } from "../contexts/DonationsContext";
+import { useBudgets } from "../contexts/BudgetsContext";
 import { usePayees } from "../contexts/PayeesContext";
 import useGiving from "../hooks/useGiving";
 import { formatCents, todayISO } from "../utils";
@@ -52,8 +54,18 @@ export default function DonationsPage() {
   // top of a page about gifts.
   const [goalError, setGoalError] = useState(null);
 
-  const { recipients, updateDonation, removeDonation, deleteRecipient, setGivingGoal } =
-    useDonations();
+  const {
+    recipients,
+    givingSettings,
+    recordDonation,
+    updateDonation,
+    removeDonation,
+    deleteRecipient,
+    setGivingGoal,
+    setGivingCategories,
+    setGiftExcluded,
+  } = useDonations();
+  const { budgets } = useBudgets();
   const giving = useGiving(year);
   // Names for the gift rows. `useGiving` passes the reference through and stops
   // there — it is a hook about what was given, and a payee's name is not a figure —
@@ -66,10 +78,29 @@ export default function DonationsPage() {
 
   // The store validates; the page has to say so. Silently swallowing a rejected
   // edit would leave a row showing a figure the books are not using.
+  //
+  // A row read off a giving category has no tag yet, so the first edit writes
+  // one — the row's own reading with the edit laid over it.
   function handleDonationChange(patch) {
-    const result = updateDonation(patch);
+    const row = giving.rows.find((entry) => entry.transactionId === patch.transactionId);
+    const result = row?.auto
+      ? recordDonation({
+          transactionId: row.transactionId,
+          recipientId: row.recipientId,
+          deductibleCents: row.deductibleCents,
+          acknowledged: row.acknowledged,
+          ...patch,
+        })
+      : updateDonation(patch);
     setError(result.ok ? null : result.error);
     return result;
+  }
+
+  // Untagging removes the statement and, for a gift read off a giving category,
+  // says it is not one — or it would come straight back. The money stays put.
+  function handleUntag(row) {
+    removeDonation({ transactionId: row.transactionId });
+    setGiftExcluded({ transactionId: row.transactionId, excluded: true });
   }
 
   function handleGoalChange(patch) {
@@ -171,7 +202,7 @@ export default function DonationsPage() {
               totalCents={giving.totalCents}
               deductibleCents={giving.deductibleCents}
               onChange={handleDonationChange}
-              onRemove={(row) => removeDonation({ transactionId: row.transactionId })}
+              onRemove={handleUntag}
               onAdd={() => setShowDonationModal(true)}
             />
 
@@ -200,6 +231,12 @@ export default function DonationsPage() {
               goal={giving.goal}
               error={goalError}
               onChange={handleGoalChange}
+            />
+            <GivingCategoriesPanel
+              budgets={budgets}
+              selectedIds={giving.givingBudgetIds}
+              stated={Array.isArray(givingSettings.budgetIds)}
+              onChange={setGivingCategories}
             />
             <OrganizationList
               year={year}

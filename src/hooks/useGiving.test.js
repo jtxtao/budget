@@ -81,6 +81,10 @@ function seed({
   recipients = [RED_CROSS],
   donations = [],
   goals,
+  // No giving categories unless a test asks for them: most of this suite is
+  // about the tag, and the fixture's one category is named "Giving", which
+  // would otherwise be read as a gift without one.
+  givingSettings = { budgetIds: [], excludedIds: [] },
 } = {}) {
   const write = (key, value) => value && localStorage.setItem(key, JSON.stringify(value));
   write("accounts", accounts);
@@ -89,6 +93,7 @@ function seed({
   write("donationRecipients", recipients);
   write("donations", donations);
   write("donationGoals", goals);
+  write("givingSettings", givingSettings);
   // Seeding the ledger fires the day-one assignment seed; an empty assignments
   // key keeps that out of the way of what these tests are about.
   write("assignments", []);
@@ -497,5 +502,82 @@ describe("the store's own boundary", () => {
     });
     expect(attempt.ok).toBe(false);
     expect(result.current.donations.recipients).toHaveLength(1);
+  });
+});
+
+describe("gifts read off a giving category", () => {
+  const GUESS = { budgetIds: null, excludedIds: [] };
+
+  test("spending under a category named like giving is a gift without a tag", () => {
+    const gift = out("2026-03-04", 20000);
+    seed({ transactions: [gift], givingSettings: GUESS });
+
+    const giving = read();
+    expect(giving.giftCount).toBe(1);
+    expect(giving.totalCents).toBe(20000);
+    expect(giving.deductibleCents).toBe(20000);
+    expect(giving.rows[0]).toMatchObject({ transactionId: gift.id, auto: true, recipientId: null });
+  });
+
+  test("a category not named like giving needs choosing, and choosing it is enough", () => {
+    const groceries = { ...BUDGET, id: "b2", name: "Groceries" };
+    const shop = { ...out("2026-03-05", 8000), budgetId: "b2" };
+    seed({ budgets: [BUDGET, groceries], transactions: [shop], givingSettings: GUESS });
+    expect(read().giftCount).toBe(0);
+
+    seed({
+      budgets: [BUDGET, groceries],
+      transactions: [shop],
+      givingSettings: { budgetIds: ["b2"], excludedIds: [] },
+    });
+    expect(read().giftCount).toBe(1);
+  });
+
+  test("the organization is the one named like the payee, and its default applies", () => {
+    const gift = { ...out("2026-03-04", 5000), payeeId: "p1" };
+    seed({ transactions: [gift], recipients: [RED_CROSS, RAFFLE], givingSettings: GUESS });
+    localStorage.setItem(
+      "payees",
+      JSON.stringify([{ id: "p1", name: "school raffle", defaultBudgetId: null }])
+    );
+
+    const [row] = read().rows;
+    expect(row.recipientId).toBe(RAFFLE.id);
+    expect(row.deductibleCents).toBe(0);
+  });
+
+  test("only the giving part of a divided receipt counts", () => {
+    const groceries = { ...BUDGET, id: "b2", name: "Groceries" };
+    const shop = {
+      ...out("2026-03-05", 10000),
+      budgetId: "b2",
+      splits: [
+        { id: "s1", budgetId: "b2", amountCents: 7000 },
+        { id: "s2", budgetId: "b1", amountCents: 3000 },
+      ],
+    };
+    seed({ budgets: [BUDGET, groceries], transactions: [shop], givingSettings: GUESS });
+
+    expect(read().totalCents).toBe(3000);
+  });
+
+  test("a tag wins, and untagging one that was never tagged keeps it off", () => {
+    const gift = out("2026-03-04", 20000);
+    seed({
+      transactions: [gift],
+      donations: [tag(gift.id, RED_CROSS.id, 15000)],
+      givingSettings: GUESS,
+    });
+
+    const result = live();
+    expect(result.current.giving.giftCount).toBe(1);
+    expect(result.current.giving.deductibleCents).toBe(15000);
+
+    act(() => {
+      result.current.donations.removeDonation({ transactionId: gift.id });
+      result.current.donations.setGiftExcluded({ transactionId: gift.id, excluded: true });
+    });
+    expect(result.current.giving.giftCount).toBe(0);
+    expect(result.current.ledger.transactions).toHaveLength(1);
   });
 });

@@ -71,6 +71,7 @@ export const STORE_KEYS = [
   "donationRecipients",
   "donations",
   "donationGoals",
+  "givingSettings",
   "savingsGoals",
   "savingsGoalAssignments",
   "schedules",

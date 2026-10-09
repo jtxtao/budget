@@ -3,9 +3,12 @@ import {
   ACKNOWLEDGMENT_THRESHOLD_CENTS,
   DEFAULT_GOAL_SOURCE,
   GOAL_SOURCES,
+  givingBudgetIds,
   toYear,
   useDonations,
 } from "../contexts/DonationsContext";
+import { useBudgets } from "../contexts/BudgetsContext";
+import { normalizePayeeName, usePayees } from "../contexts/PayeesContext";
 import { isSplit, TRANSACTION_KINDS, useTransactions } from "../contexts/TransactionsContext";
 // One definition of "a share, or a dash where a share would be a fiction",
 // shared with the spending report rather than written a second time here: a
@@ -71,8 +74,10 @@ import { shareBps } from "./useSpendingReport";
  * @param year the calendar year as four digits, e.g. "2026"
  */
 export default function useGiving(year) {
-  const { recipients, donations, goals } = useDonations();
+  const { recipients, donations, goals, givingSettings } = useDonations();
   const { transactions } = useTransactions();
+  const { budgets } = useBudgets();
+  const { payeeById } = usePayees();
 
   return useMemo(() => {
     const transactionById = new Map(transactions.map((transaction) => [transaction.id, transaction]));
@@ -92,7 +97,52 @@ export default function useGiving(year) {
     // says when the year on screen is empty but the books are not.
     let firstYear = null;
 
-    for (const donation of donations) {
+    // **Spending filed under a giving category is a gift without a tag.** Each
+    // untagged outflow there (and each refund back into one) is read as a
+    // statement the household never had to write: the organization is the one
+    // named like its payee, and the deductible part is the whole gift — or none
+    // of it where that organization is marked not deductible. Only the parts of
+    // a divided receipt that are filed as giving count. A tag, where one exists,
+    // always wins; editing one of these rows writes a tag (`auto` says so).
+    const giving = givingBudgetIds(givingSettings, budgets);
+    const excluded = new Set(givingSettings?.excludedIds ?? []);
+    const tagged = new Set(donations.map((donation) => donation.transactionId));
+    const recipientByName = new Map(
+      recipients.map((recipient) => [normalizePayeeName(recipient.name), recipient])
+    );
+    const statements = [...donations];
+    const autoAmounts = new Map();
+    if (giving.size > 0) {
+      for (const transaction of transactions) {
+        if (tagged.has(transaction.id) || excluded.has(transaction.id)) continue;
+        if (
+          transaction.kind !== TRANSACTION_KINDS.OUTFLOW &&
+          transaction.kind !== TRANSACTION_KINDS.INFLOW
+        ) {
+          continue;
+        }
+        const parts = isSplit(transaction)
+          ? transaction.splits
+          : [{ budgetId: transaction.budgetId, amountCents: transaction.amountCents }];
+        const givenCents = parts
+          .filter((part) => giving.has(part.budgetId))
+          .reduce((sum, part) => sum + part.amountCents, 0);
+        if (givenCents <= 0) continue;
+
+        const payee = transaction.payeeId == null ? null : payeeById.get(transaction.payeeId);
+        const recipient = payee ? recipientByName.get(normalizePayeeName(payee.name)) : null;
+        autoAmounts.set(transaction.id, givenCents);
+        statements.push({
+          transactionId: transaction.id,
+          recipientId: recipient?.id ?? null,
+          deductibleCents: recipient && !recipient.deductible ? 0 : givenCents,
+          acknowledged: false,
+          auto: true,
+        });
+      }
+    }
+
+    for (const donation of statements) {
       const transaction = transactionById.get(donation.transactionId);
       // An orphaned tag. The ledger is the join, so it is worth nothing here;
       // `deleteTransaction` clears these on the way out.
@@ -104,8 +154,10 @@ export default function useGiving(year) {
       // Money back from the organisation, which subtracts from both figures.
       const returned = transaction.kind === TRANSACTION_KINDS.INFLOW;
       const sign = returned ? -1 : 1;
-      const amountCents = sign * transaction.amountCents;
-      const claimedCents = sign * Math.min(donation.deductibleCents, transaction.amountCents);
+      // An untagged gift is only the part filed as giving.
+      const giftCents = autoAmounts.get(donation.transactionId) ?? transaction.amountCents;
+      const amountCents = sign * giftCents;
+      const claimedCents = sign * Math.min(donation.deductibleCents, giftCents);
 
       if (giftYear == null) {
         undatedCount += 1;
@@ -124,7 +176,7 @@ export default function useGiving(year) {
         !returned &&
         !donation.acknowledged &&
         claimedCents > 0 &&
-        transaction.amountCents >= ACKNOWLEDGMENT_THRESHOLD_CENTS;
+        giftCents >= ACKNOWLEDGMENT_THRESHOLD_CENTS;
 
       rows.push({
         transactionId: donation.transactionId,
@@ -139,7 +191,7 @@ export default function useGiving(year) {
         // edited down on the register can say what happened rather than quietly
         // showing a smaller figure than the one that was entered.
         statedDeductibleCents: sign * donation.deductibleCents,
-        clamped: donation.deductibleCents > transaction.amountCents,
+        clamped: donation.deductibleCents > giftCents,
         recipientId: donation.recipientId ?? null,
         // Null is a real state — the organisation was deleted and the gift
         // outlived it — and the row prints it as a gap to be refiled.
@@ -147,6 +199,7 @@ export default function useGiving(year) {
         acknowledged: donation.acknowledged,
         needsAcknowledgment,
         returned,
+        auto: donation.auto === true,
       });
 
       totalCents += amountCents;
@@ -282,7 +335,8 @@ export default function useGiving(year) {
       undatedTotalCents,
 
       hasRecipients: recipients.length > 0,
-      hasGiving: donations.length > 0,
+      hasGiving: statements.length > 0,
+      givingBudgetIds: giving,
     };
-  }, [recipients, donations, goals, transactions, year]);
+  }, [recipients, donations, goals, givingSettings, budgets, payeeById, transactions, year]);
 }
