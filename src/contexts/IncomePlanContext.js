@@ -1,6 +1,7 @@
 import React, { useCallback, useContext, useMemo } from "react";
 import { v4 as uuidV4 } from "uuid";
 import useSyncedState from "../hooks/useSyncedState";
+import { reorderSubset } from "../reorder";
 import { CADENCES, monthlyCents } from "../cadence";
 import { toCents } from "../utils";
 
@@ -120,6 +121,19 @@ export const IncomePlanProvider = ({ children }) => {
   );
 
   /**
+   * A new order for some of the income sources, from a drag: the ids named take turns
+   * in the places they already held, and nothing else moves (`reorderSubset`).
+   * Array order is display order, so this is the whole of it.
+   */
+  const reorderIncomeSources = useCallback(
+    (orderedIds) => {
+      setSources((previous) => reorderSubset(previous, orderedIds));
+      return { ok: true };
+    },
+    [setSources]
+  );
+
+  /**
    * No cascade, in either direction. Nothing links a source to the income
    * records it predicted — a paycheque that arrives is logged on its own, and
    * matching the two would mean inventing a correspondence the user never
@@ -140,6 +154,7 @@ export const IncomePlanProvider = ({ children }) => {
       addIncomeSource,
       updateIncomeSource,
       deleteIncomeSource,
+      reorderIncomeSources,
     }),
     [
       sources,
@@ -148,6 +163,7 @@ export const IncomePlanProvider = ({ children }) => {
       addIncomeSource,
       updateIncomeSource,
       deleteIncomeSource,
+      reorderIncomeSources,
     ]
   );
 

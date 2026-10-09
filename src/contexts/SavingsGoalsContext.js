@@ -1,6 +1,7 @@
 import React, { useCallback, useContext, useMemo } from "react";
 import { v4 as uuidV4 } from "uuid";
 import useSyncedState from "../hooks/useSyncedState";
+import { reorderSubset } from "../reorder";
 import { useSavingsGoalAssignments } from "./SavingsGoalAssignmentsContext";
 import { toCents } from "../utils";
 
@@ -120,11 +121,24 @@ export const SavingsGoalsProvider = ({ children }) => {
     [setGoals, removeGoalAssignments]
   );
 
+  /**
+   * A new order for some of the goals, from a drag: the ids named take turns
+   * in the places they already held, and nothing else moves (`reorderSubset`).
+   * Array order is display order, so this is the whole of it.
+   */
+  const reorderSavingsGoals = useCallback(
+    (orderedIds) => {
+      setGoals((previous) => reorderSubset(previous, orderedIds));
+      return { ok: true };
+    },
+    [setGoals]
+  );
+
   // Memoised so a change in any other store does not re-render every
   // consumer of this one.
   const value = useMemo(
-    () => ({ goals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal }),
-    [goals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal]
+    () => ({ goals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal, reorderSavingsGoals }),
+    [goals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal, reorderSavingsGoals]
   );
 
   return <SavingsGoalsContext.Provider value={value}>{children}</SavingsGoalsContext.Provider>;

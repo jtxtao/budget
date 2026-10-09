@@ -48,8 +48,8 @@ export default function DashboardPage() {
   const today = todayISO();
   const period = currentPeriod();
 
-  const { accounts } = useAccounts();
-  const { budgets } = useBudgets();
+  const { accounts, reorderAccounts } = useAccounts();
+  const { budgets, reorderBudgets, reorderGroups } = useBudgets();
   const { payeeById } = usePayees();
   const { addTransaction } = useTransactions();
   const { advanceSchedule } = useSchedules();
@@ -267,6 +267,8 @@ export default function DashboardPage() {
             shortfall={dashboard.shortfall}
             onMove={handleMove}
             onAssign={() => setAssigning(true)}
+            onReorderRows={reorderBudgets}
+            onReorderGroups={reorderGroups}
           />
         </div>
         {/* Upcoming above the accounts in the narrow column: it is the one panel
@@ -299,6 +301,7 @@ export default function DashboardPage() {
             rows={accountRows}
             onReconcile={(account) => setReconcilingId(account.id)}
             onPayOff={(account) => setPayingOffId(account.id)}
+            onReorder={reorderAccounts}
           />
         </div>
       </div>

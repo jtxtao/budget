@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Button from "./Button";
+import { SortableList, useSortableItem } from "./Sortable";
 import { amountEditing, formatCents, formatDateMedium, formatPeriod, toCents } from "../utils";
 
 /**
@@ -85,7 +86,8 @@ const rowBg = (striped) => (striped ? "bg-sheet-alt" : "bg-sheet");
  */
 const assignedValue = (row) => (row.assignedCents ? amountEditing(row.assignedCents) : "");
 
-function GoalRow({ row, period, striped, error, onAssign, onEdit, onDelete }) {
+function GoalRow({ row, period, striped, error, onAssign, onEdit, onDelete, sortable }) {
+  const item = useSortableItem(row.goalId, { disabled: !sortable });
   const ratio = row.targetCents > 0 ? row.availableCents / row.targetCents : 0;
 
   function handleBlur(e) {
@@ -100,7 +102,7 @@ function GoalRow({ row, period, striped, error, onAssign, onEdit, onDelete }) {
 
   return (
     <>
-      <tr className={rowBg(striped)}>
+      <tr ref={item.ref} style={item.style} {...item.handle} className={rowBg(striped)}>
         <th scope="row" className="px-4 py-2 text-left font-sans text-row font-normal text-ink">
           {row.name}
           {/* Through `formatDateMedium`, carrying the year, like every other
@@ -191,7 +193,11 @@ function GoalRow({ row, period, striped, error, onAssign, onEdit, onDelete }) {
   );
 }
 
-export default function SavingsGoalList({ rows, period, onAssign, onEdit, onDelete }) {
+/**
+ * `onReorder`, where given, lets a goal be dragged to a new place in the list —
+ * anywhere on the row but the contribution field, which is for typing in.
+ */
+export default function SavingsGoalList({ rows, period, onAssign, onEdit, onDelete, onReorder }) {
   // One at a time, keyed on the row it belongs to: a rejection is a reply to the
   // edit just made, and a page of stale messages from earlier attempts would say
   // nothing about the cell the user is in. The same contract
@@ -228,18 +234,24 @@ export default function SavingsGoalList({ rows, period, onAssign, onEdit, onDele
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, index) => (
-                <GoalRow
-                  key={row.goalId}
-                  row={row}
-                  period={period}
-                  striped={index % 2 === 1}
-                  error={error?.id === row.goalId ? error.message : null}
-                  onAssign={commit}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                />
-              ))}
+              <SortableList
+                ids={rows.map((row) => row.goalId)}
+                onReorder={onReorder ?? (() => {})}
+              >
+                {rows.map((row, index) => (
+                  <GoalRow
+                    key={row.goalId}
+                    row={row}
+                    period={period}
+                    striped={index % 2 === 1}
+                    error={error?.id === row.goalId ? error.message : null}
+                    onAssign={commit}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    sortable={onReorder != null}
+                  />
+                ))}
+              </SortableList>
             </tbody>
           </table>
         </div>

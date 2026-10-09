@@ -1,4 +1,5 @@
 import Button from "./Button";
+import { SortableList, useSortableItem } from "./Sortable";
 import { ACCOUNT_SCOPES, ACCOUNT_TYPES } from "../contexts/AccountsContext";
 import { formatCents } from "../utils";
 
@@ -30,7 +31,8 @@ import { formatCents } from "../utils";
  * balance for, so a caller that has none simply gets the names.
  */
 
-function AccountRow({ account, balanceCents, striped, onEdit, onDelete }) {
+function AccountRow({ account, balanceCents, striped, onEdit, onDelete, sortable }) {
+  const item = useSortableItem(account.id, { disabled: !sortable });
   // One definition of trouble, as in the category table: an account that is
   // *owned* and has gone under. A debt is negative by definition — red on each
   // would say nothing about any of them — while a current account below zero is
@@ -39,6 +41,9 @@ function AccountRow({ account, balanceCents, striped, onEdit, onDelete }) {
 
   return (
     <div
+      ref={item.ref}
+      style={item.style}
+      {...item.handle}
       className={`flex items-center gap-3 px-4 py-2 ${striped ? "bg-sheet-alt" : "bg-sheet"}`}
     >
       <div className="min-w-0 flex-1">
@@ -91,6 +96,7 @@ function AccountSection({
   onAdd,
   onEdit,
   onDelete,
+  onReorder,
 }) {
   const owned = accounts.filter((account) => account.type !== ACCOUNT_TYPES.LIABILITY);
   const owed = accounts.filter((account) => account.type === ACCOUNT_TYPES.LIABILITY);
@@ -155,16 +161,24 @@ function AccountSection({
                 {group.label}
               </div>
             )}
-            {group.accounts.map((account) => (
-              <AccountRow
-                key={account.id}
-                account={account}
-                balanceCents={balanceById?.get(account.id)}
-                striped={stripe++ % 2 === 1}
-                onEdit={onEdit}
-                onDelete={onDelete}
-              />
-            ))}
+            {/* Reordered inside its own side: what is owned and what is owed
+                are drawn apart, so a drop cannot carry one across. */}
+            <SortableList
+              ids={group.accounts.map((account) => account.id)}
+              onReorder={onReorder ?? (() => {})}
+            >
+              {group.accounts.map((account) => (
+                <AccountRow
+                  key={account.id}
+                  account={account}
+                  balanceCents={balanceById?.get(account.id)}
+                  striped={stripe++ % 2 === 1}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  sortable={onReorder != null}
+                />
+              ))}
+            </SortableList>
           </div>
         ))
       )}
@@ -197,7 +211,11 @@ const SECTIONS = [
   },
 ];
 
-export default function AccountList({ accounts, balanceById, onAdd, onEdit, onDelete }) {
+/**
+ * `onReorder`, where given, lets a row be dragged to a new place in its
+ * section; it is handed the ids that section shows, in their new order.
+ */
+export default function AccountList({ accounts, balanceById, onAdd, onEdit, onDelete, onReorder }) {
   // Filed by scope, with anything unrecognised falling to on budget — matching
   // the store's default, and keeping every account on a screen that is the only
   // place one can be deleted from. Built as a bucket per section rather than a
@@ -222,6 +240,7 @@ export default function AccountList({ accounts, balanceById, onAdd, onEdit, onDe
           onAdd={onAdd}
           onEdit={onEdit}
           onDelete={onDelete}
+          onReorder={onReorder}
         />
       ))}
     </div>

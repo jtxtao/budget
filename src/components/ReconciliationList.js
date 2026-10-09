@@ -1,5 +1,6 @@
 import Button from "./Button";
 import { ACCOUNT_SCOPES, ACCOUNT_TYPES, scopeLabel } from "../contexts/AccountsContext";
+import { SortableList, useSortableItem } from "./Sortable";
 import { formatCents, formatDateMedium, formatDayDelta } from "../utils";
 
 /**
@@ -40,7 +41,16 @@ function reconciliation(account, daysSince) {
   };
 }
 
-function ReconciliationRow({ account, balanceCents, daysSince, striped, onReconcile, onPayOff }) {
+function ReconciliationRow({
+  account,
+  balanceCents,
+  daysSince,
+  striped,
+  onReconcile,
+  onPayOff,
+  sortable,
+}) {
+  const item = useSortableItem(account.id, { disabled: !sortable });
   const status = reconciliation(account, daysSince);
   // The same single definition of trouble as everywhere else: something owned
   // that has gone under. A debt is negative by definition.
@@ -56,7 +66,12 @@ function ReconciliationRow({ account, balanceCents, daysSince, striped, onReconc
        the pair worth reading together, so they take the top line; what the
        account is and when it was last checked go under them, beside the
        action. */
-    <div className={`px-4 py-2 ${striped ? "bg-sheet-alt" : "bg-sheet"}`}>
+    <div
+      ref={item.ref}
+      style={item.style}
+      {...item.handle}
+      className={`px-4 py-2 ${striped ? "bg-sheet-alt" : "bg-sheet"}`}
+    >
       <div className="flex items-baseline gap-3">
         <div className="min-w-0 flex-1 truncate font-sans text-row text-ink">{account.name}</div>
         <div
@@ -114,7 +129,12 @@ function ReconciliationRow({ account, balanceCents, daysSince, striped, onReconc
   );
 }
 
-export default function ReconciliationList({ rows, onReconcile, onPayOff }) {
+/**
+ * `onReorder`, where given, lets a row be picked up and dropped to put the
+ * accounts in the household's own order — the order every account list in the
+ * app reads.
+ */
+export default function ReconciliationList({ rows, onReconcile, onPayOff, onReorder }) {
   const unchecked = rows.filter(
     (row) => row.account.reconciledOn == null || row.daysSince > STALE_AFTER_DAYS
   ).length;
@@ -145,17 +165,23 @@ export default function ReconciliationList({ rows, onReconcile, onPayOff }) {
           there.
         </p>
       ) : (
-        rows.map((row, index) => (
-          <ReconciliationRow
-            key={row.account.id}
-            account={row.account}
-            balanceCents={row.balanceCents}
-            daysSince={row.daysSince}
-            striped={index % 2 === 1}
-            onReconcile={onReconcile}
-            onPayOff={onPayOff}
-          />
-        ))
+        <SortableList
+          ids={rows.map((row) => row.account.id)}
+          onReorder={onReorder ?? (() => {})}
+        >
+          {rows.map((row, index) => (
+            <ReconciliationRow
+              key={row.account.id}
+              account={row.account}
+              balanceCents={row.balanceCents}
+              daysSince={row.daysSince}
+              striped={index % 2 === 1}
+              onReconcile={onReconcile}
+              onPayOff={onPayOff}
+              sortable={onReorder != null}
+            />
+          ))}
+        </SortableList>
       )}
     </section>
   );

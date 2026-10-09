@@ -32,7 +32,7 @@ export default function SavingsGoalsPage() {
 
   const { toBeAssignedCents } = useEnvelopes(period);
   const { setAssignedAmount } = useSavingsGoalAssignments();
-  const { goals, deleteSavingsGoal } = useSavingsGoals();
+  const { goals, deleteSavingsGoal, reorderSavingsGoals } = useSavingsGoals();
   const rows = useSavingsGoalEnvelopes(period);
 
   function handleAssign(row, cents) {
@@ -87,6 +87,7 @@ export default function SavingsGoalsPage() {
           onAssign={handleAssign}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          onReorder={reorderSavingsGoals}
         />
 
         <Placeholder

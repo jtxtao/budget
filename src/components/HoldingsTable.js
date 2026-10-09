@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { ACCOUNT_TYPES } from "../contexts/AccountsContext";
+import { SortableList, useSortableItem } from "./Sortable";
 import { describeSource, HOLDING_CLASSES } from "../hooks/useNetWorth";
 import { formatCents, formatPeriod } from "../utils";
 
@@ -28,7 +29,8 @@ const SECTIONS = [
   { band: HOLDING_CLASSES.DEBT, label: "Owed", swatch: "bg-vermilion" },
 ];
 
-function HoldingRow({ row, period, striped, onFixDrift }) {
+function HoldingRow({ row, period, striped, onFixDrift, sortable }) {
+  const item = useSortableItem(row.account.id, { disabled: !sortable });
   // Shared with the update form rather than written twice: the two screens are
   // read against each other, and a figure called current in one and carried
   // forward in the other is worse than either description alone.
@@ -40,7 +42,12 @@ function HoldingRow({ row, period, striped, onFixDrift }) {
   const tone = stale ? "text-vermilion-ink" : "text-ink-soft";
 
   return (
-    <tr className={striped ? "bg-sheet-alt" : "bg-sheet"}>
+    <tr
+      ref={item.ref}
+      style={item.style}
+      {...item.handle}
+      className={striped ? "bg-sheet-alt" : "bg-sheet"}
+    >
       <th scope="row" className="px-4 py-2 text-left font-sans text-row font-normal text-ink">
         {row.account.name}
       </th>
@@ -85,7 +92,11 @@ function HoldingRow({ row, period, striped, onFixDrift }) {
  * click, and it is the cell that states the gap rather than a new column, which
  * would widen every row to carry a control almost none of them can use.
  */
-export default function HoldingsTable({ rows, period, onFixDrift }) {
+/**
+ * `onReorder`, where given, lets a row be dragged within its band. The order is
+ * the accounts' own, so the chart's slices follow it too.
+ */
+export default function HoldingsTable({ rows, period, onFixDrift, onReorder }) {
   let stripe = 0;
 
   const sections = SECTIONS.map((section) => ({
@@ -147,15 +158,21 @@ export default function HoldingsTable({ rows, period, onFixDrift }) {
                     </td>
                     <td />
                   </tr>
-                  {section.rows.map((row) => (
-                    <HoldingRow
-                      key={row.account.id}
-                      row={row}
-                      period={period}
-                      striped={stripe++ % 2 === 1}
-                      onFixDrift={onFixDrift}
-                    />
-                  ))}
+                  <SortableList
+                    ids={section.rows.map((row) => row.account.id)}
+                    onReorder={onReorder ?? (() => {})}
+                  >
+                    {section.rows.map((row) => (
+                      <HoldingRow
+                        key={row.account.id}
+                        row={row}
+                        period={period}
+                        striped={stripe++ % 2 === 1}
+                        onFixDrift={onFixDrift}
+                        sortable={onReorder != null}
+                      />
+                    ))}
+                  </SortableList>
                 </tbody>
               );
             })}

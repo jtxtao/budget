@@ -1,5 +1,6 @@
 import { cadenceLabel, paymentsPerYear } from "../cadence";
 import { formatCents } from "../utils";
+import { SortableList, useSortableItem } from "./Sortable";
 import Button from "./Button";
 
 /**
@@ -24,11 +25,64 @@ function cadenceNote(cadence) {
   return `${perYear} a year`;
 }
 
+/**
+ * One source. Dragged to put the sources in the household's own order, where
+ * the table is given somewhere to send it.
+ */
+function IncomeRow({ row, index, onDelete, sortable }) {
+  const item = useSortableItem(row.id, { disabled: !sortable });
+  const note = cadenceNote(row.cadence);
+
+  return (
+    <tr
+      ref={item.ref}
+      style={item.style}
+      {...item.handle}
+      className={index % 2 === 0 ? "bg-sheet" : "bg-sheet-alt"}
+    >
+      <td className="px-4 py-2 font-sans text-row text-ink">{row.name}</td>
+      <td data-label="Cadence" className="whitespace-nowrap px-4 py-2">
+        <div>
+          <div className="font-sans text-row text-ink-soft">
+            {cadenceLabel(row.cadence)}
+          </div>
+          {note && (
+            <div className="font-mono text-label uppercase text-ink-soft">{note}</div>
+          )}
+        </div>
+      </td>
+      <td
+        data-label="Per payment"
+        className="whitespace-nowrap px-4 py-2 text-right font-mono text-row tabular-nums text-ink-soft"
+      >
+        {formatCents(row.amountCents)}
+      </td>
+      <td
+        data-label="Per month"
+        className="whitespace-nowrap px-4 py-2 text-right font-mono text-row font-medium tabular-nums text-ink"
+      >
+        {formatCents(row.monthlyCents)}
+      </td>
+      <td className="px-4 py-2 text-right">
+        <Button
+          variant="row"
+          size="sm"
+          aria-label={`Remove income source: ${row.name}`}
+          onClick={() => onDelete(row)}
+        >
+          Remove
+        </Button>
+      </td>
+    </tr>
+  );
+}
+
 export default function ExpectedIncomeTable({
   rows,
   expectedIncomeCents,
   pretaxMonthlyCents = 0,
   onDelete,
+  onReorder,
   actions,
 }) {
   return (
@@ -74,47 +128,20 @@ export default function ExpectedIncomeTable({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, i) => {
-                const note = cadenceNote(row.cadence);
-
-                return (
-                  <tr key={row.id} className={i % 2 === 0 ? "bg-sheet" : "bg-sheet-alt"}>
-                    <td className="px-4 py-2 font-sans text-row text-ink">{row.name}</td>
-                    <td data-label="Cadence" className="whitespace-nowrap px-4 py-2">
-                      <div>
-                        <div className="font-sans text-row text-ink-soft">
-                          {cadenceLabel(row.cadence)}
-                        </div>
-                        {note && (
-                          <div className="font-mono text-label uppercase text-ink-soft">{note}</div>
-                        )}
-                      </div>
-                    </td>
-                    <td
-                      data-label="Per payment"
-                      className="whitespace-nowrap px-4 py-2 text-right font-mono text-row tabular-nums text-ink-soft"
-                    >
-                      {formatCents(row.amountCents)}
-                    </td>
-                    <td
-                      data-label="Per month"
-                      className="whitespace-nowrap px-4 py-2 text-right font-mono text-row font-medium tabular-nums text-ink"
-                    >
-                      {formatCents(row.monthlyCents)}
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <Button
-                        variant="row"
-                        size="sm"
-                        aria-label={`Remove income source: ${row.name}`}
-                        onClick={() => onDelete(row)}
-                      >
-                        Remove
-                      </Button>
-                    </td>
-                  </tr>
-                );
-              })}
+              <SortableList
+                ids={rows.map((row) => row.id)}
+                onReorder={onReorder ?? (() => {})}
+              >
+                {rows.map((row, index) => (
+                  <IncomeRow
+                    key={row.id}
+                    row={row}
+                    index={index}
+                    onDelete={onDelete}
+                    sortable={onReorder != null}
+                  />
+                ))}
+              </SortableList>
             </tbody>
             <tfoot>
               <tr className="bg-band">

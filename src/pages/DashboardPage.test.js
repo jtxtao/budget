@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import AppProviders from "../contexts/AppProviders";
 import DashboardPage from "./DashboardPage";
@@ -666,5 +666,98 @@ describe("moving money between categories", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("two different categories");
     expect(amounts()).toEqual({ rent: "$300", groceries: "-$400" });
+  });
+});
+
+describe("drag to reorder", () => {
+  // jsdom lays nothing out, so each table row is given a 40px band by its
+  // index and each group's <tbody> the span of its rows — enough for dnd-kit to
+  // measure, collide and choose a drop.
+  let original;
+  beforeEach(() => {
+    original = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function () {
+      let top = 0;
+      let height = 40;
+      if (this.tagName === "TBODY" && this.rows.length > 0) {
+        top = this.rows[0].rowIndex * 40;
+        height = this.rows.length * 40;
+      } else {
+        const row = this.closest?.("tr");
+        if (row) top = row.rowIndex * 40;
+      }
+      return { x: 0, y: top, top, left: 0, right: 600, bottom: top + height, width: 600, height };
+    };
+  });
+  afterEach(async () => {
+    Element.prototype.getBoundingClientRect = original;
+    await act(() => new Promise((resolve) => setTimeout(resolve, 60)));
+  });
+
+  function drag(element, fromY, toY) {
+    fireEvent.mouseDown(element, { button: 0, clientX: 10, clientY: fromY });
+    act(() => {
+      fireEvent.mouseMove(document, { clientX: 10, clientY: fromY + 10 });
+    });
+    act(() => {
+      fireEvent.mouseMove(document, { clientX: 10, clientY: toY });
+    });
+    act(() => {
+      fireEvent.mouseUp(document, { clientX: 10, clientY: toY });
+    });
+  }
+
+  function seedGroups() {
+    const funded = (id) => ({ id: `as-${id}`, budgetId: id, period: PERIOD, assignedCents: 1000 });
+    seed({
+      budgetGroups: [
+        { id: "g1", name: "Bills", bucket: "essentials" },
+        { id: "g2", name: "Fun", bucket: "fun" },
+      ],
+      budgets: [
+        { id: "rent", name: "Rent", groupId: "g1", plannedCents: 1000, bucket: "essentials" },
+        { id: "power", name: "Power", groupId: "g1", plannedCents: 1000, bucket: "essentials" },
+        { id: "water", name: "Water", groupId: "g1", plannedCents: 1000, bucket: "essentials" },
+        { id: "games", name: "Games", groupId: "g2", plannedCents: 1000, bucket: "fun" },
+      ],
+      transactions: [],
+      assignments: ["rent", "power", "water", "games"].map(funded),
+    });
+  }
+
+  const storedIds = (key) => JSON.parse(localStorage.getItem(key)).map((record) => record.id);
+
+  it("moves a category within its group by dragging its row", () => {
+    seedGroups();
+    renderPage();
+    const water = row("Water");
+    expect(water.rowIndex).toBe(4);
+
+    drag(water, 170, 90);
+
+    expect(storedIds("budgets")).toEqual(["water", "rent", "power", "games"]);
+    const names = screen
+      .getAllByRole("rowheader")
+      .map((cell) => cell.textContent)
+      .filter((text) => /^(Rent|Power|Water|Games)/.test(text));
+    expect(names.map((text) => text.match(/^\w+/)[0])).toEqual(["Water", "Rent", "Power", "Games"]);
+  });
+
+  it("moves a whole group by dragging its band", () => {
+    seedGroups();
+    renderPage();
+    const band = screen.getByRole("columnheader", { name: "Fun" }).closest("tr");
+    expect(band.rowIndex).toBe(5);
+
+    drag(band, 210, 90);
+
+    expect(storedIds("budgetGroups")).toEqual(["g2", "g1"]);
+    // Nothing was regrouped on the way.
+    expect(JSON.parse(localStorage.getItem("budgets")).map((budget) => budget.groupId)).toEqual([
+      "g1",
+      "g1",
+      "g1",
+      "g2",
+    ]);
   });
 });

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import Button from "./Button";
+import { SortableList, useSortableItem } from "./Sortable";
 import { FUNDING, FUNDING_LABELS } from "../fundingStatus";
 import { formatCents } from "../utils";
 
@@ -202,9 +203,20 @@ function moveLabel(row) {
   return `Move money out of ${row.name}`;
 }
 
-function CategoryRow({ row, striped, onMove }) {
+/**
+ * A category's row. Picked up whole to reorder it inside its group, when the
+ * table is given somewhere to send the order (`sortable`); the catch-alls at
+ * the foot are not categories anybody arranged and stay put.
+ */
+function CategoryRow({ row, striped, onMove, sortable = false }) {
+  const item = useSortableItem(row.budgetId, { disabled: !sortable });
   return (
-    <tr className={striped ? "bg-sheet-alt" : "bg-sheet"}>
+    <tr
+      ref={item.ref}
+      style={item.style}
+      {...item.handle}
+      className={striped ? "bg-sheet-alt" : "bg-sheet"}
+    >
       <NameCell row={row} />
       {COLUMNS.map((column) => {
         const { cents, tone } = cellFor(row, column.key);
@@ -226,9 +238,9 @@ function CategoryRow({ row, striped, onMove }) {
   );
 }
 
-function GroupBand({ name, totals }) {
+function GroupBand({ name, totals, handle }) {
   return (
-    <tr className="bg-band">
+    <tr className="bg-band" {...handle}>
       <th scope="colgroup" className="px-4 py-1.5 text-left font-mono text-label uppercase text-ink">
         {name}
       </th>
@@ -247,6 +259,42 @@ function GroupBand({ name, totals }) {
   );
 }
 
+/**
+ * One group's rows. The whole `<tbody>` is what travels when the group is
+ * dragged by its band, so its categories go with it; the rows inside are a
+ * list of their own, reordered without leaving the group — which group a
+ * category belongs to is the plan's question, answered on `/plan`.
+ */
+function SectionBody({ section, nextStripe, onMove, onReorderRows, onReorderGroups }) {
+  const item = useSortableItem(section.groupId ?? "ungrouped", {
+    disabled: !onReorderGroups || section.groupId == null,
+  });
+  const rows = section.rows.map((row) => (
+    <CategoryRow
+      key={row.budgetId}
+      row={row}
+      striped={nextStripe()}
+      onMove={onMove}
+      sortable={onReorderRows != null}
+    />
+  ));
+  return (
+    <tbody ref={item.ref} style={item.style}>
+      <GroupBand name={section.name} totals={section.totals} handle={item.handle} />
+      {onReorderRows ? (
+        <SortableList
+          ids={section.rows.map((row) => row.budgetId)}
+          onReorder={onReorderRows}
+        >
+          {rows}
+        </SortableList>
+      ) : (
+        rows
+      )}
+    </tbody>
+  );
+}
+
 export default function CategoryLedgerTable({
   sections,
   otherRows,
@@ -255,6 +303,8 @@ export default function CategoryLedgerTable({
   shortfall,
   onMove,
   onAssign,
+  onReorderRows,
+  onReorderGroups,
 }) {
   const empty = sections.length === 0 && otherRows.length === 0;
 
@@ -348,19 +398,23 @@ export default function CategoryLedgerTable({
               </tr>
             </thead>
 
-            {sections.map((section) => (
-              <tbody key={section.groupId ?? "ungrouped"}>
-                <GroupBand name={section.name} totals={section.totals} />
-                {section.rows.map((row) => (
-                  <CategoryRow
-                    key={row.budgetId}
-                    row={row}
-                    striped={stripe++ % 2 === 1}
-                    onMove={onMove}
-                  />
-                ))}
-              </tbody>
-            ))}
+            {/* Groups are dragged by their band; the ungrouped section has
+                no band of its own to arrange and keeps its place. */}
+            <SortableList
+              ids={sections.filter((section) => section.groupId != null).map((s) => s.groupId)}
+              onReorder={onReorderGroups ?? (() => {})}
+            >
+              {sections.map((section) => (
+                <SectionBody
+                  key={section.groupId ?? "ungrouped"}
+                  section={section}
+                  nextStripe={() => stripe++ % 2 === 1}
+                  onMove={onMove}
+                  onReorderRows={onReorderRows}
+                  onReorderGroups={onReorderGroups}
+                />
+              ))}
+            </SortableList>
 
             {/* Spend and funding with no category of their own. They count in
                 every total on the page, so they have to be visible somewhere

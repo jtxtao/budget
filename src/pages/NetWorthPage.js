@@ -10,6 +10,7 @@ import PeriodStepper from "../components/PeriodStepper";
 import Placeholder from "../components/Placeholder";
 import SegmentedControl from "../components/SegmentedControl";
 import UpdateBalancesModal from "../components/UpdateBalancesModal";
+import { useAccounts } from "../contexts/AccountsContext";
 import useNetWorth, { CHANGE_RANGES, DEFAULT_CHANGE_RANGE } from "../hooks/useNetWorth";
 import { currentPeriod, formatCents, formatPeriod } from "../utils";
 
@@ -60,6 +61,7 @@ export default function NetWorthPage() {
   // that says the settle form is open at all.
   const [settling, setSettling] = useState(null);
 
+  const { reorderAccounts } = useAccounts();
   const { chartSeries, slices, current, rows, tracked, changes, windowStartPeriod } = useNetWorth(
     period,
     { spanKey }
@@ -221,7 +223,12 @@ export default function NetWorthPage() {
             </details>
           </section>
 
-          <HoldingsTable rows={rows} period={period} onFixDrift={setSettling} />
+          <HoldingsTable
+            rows={rows}
+            period={period}
+            onFixDrift={setSettling}
+            onReorder={reorderAccounts}
+          />
 
           <Placeholder
             title="Asset allocation"

@@ -1,6 +1,7 @@
 import React, { useCallback, useContext, useMemo } from "react";
 import { v4 as uuidV4 } from "uuid";
 import useSyncedState from "../hooks/useSyncedState";
+import { reorderSubset } from "../reorder";
 import { useTransactions } from "./TransactionsContext";
 import { formatPeriod, isValidISODate, toCents, todayISO, toPeriod } from "../utils";
 
@@ -518,6 +519,19 @@ export const AccountsProvider = ({ children }) => {
     [accounts, setAccounts]
   );
 
+  /**
+   * A new order for some of the accounts, from a drag: the ids named take turns
+   * in the places they already held, and nothing else moves (`reorderSubset`).
+   * Array order is display order, so this is the whole of it.
+   */
+  const reorderAccounts = useCallback(
+    (orderedIds) => {
+      setAccounts((previous) => reorderSubset(previous, orderedIds));
+      return { ok: true };
+    },
+    [setAccounts]
+  );
+
   // Deleting an account drops its balance history with it — there is nothing
   // meaningful to reassign those to. Its transactions are kept and cut loose
   // instead: the money moved and the envelopes it moved through are unchanged,
@@ -652,6 +666,7 @@ export const AccountsProvider = ({ children }) => {
       updateAccount,
       reconcileAccount,
       setPayFromAccount,
+      reorderAccounts,
       deleteAccount,
       getAccountBalances,
       getPeriodBalances,
@@ -667,6 +682,7 @@ export const AccountsProvider = ({ children }) => {
       updateAccount,
       reconcileAccount,
       setPayFromAccount,
+      reorderAccounts,
       deleteAccount,
       getAccountBalances,
       getPeriodBalances,

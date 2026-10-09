@@ -1,6 +1,7 @@
 import React, { useCallback, useContext, useMemo } from "react";
 import { v4 as uuidV4 } from "uuid";
 import useSyncedState from "../hooks/useSyncedState";
+import { reorderSubset } from "../reorder";
 import { readKey } from "../storage";
 import { useAssignments } from "./AssignmentsContext";
 import { useTransactions } from "./TransactionsContext";
@@ -561,6 +562,28 @@ export const BudgetsProvider = ({ children }) => {
     [setBudgets, setGroups]
   );
 
+  /**
+   * A new order for some categories, or for some groups, from a drag on the
+   * dashboard: the ids named take turns in the places they already held, and
+   * nothing else moves (`reorderSubset`). Neither regroups anything — moving a
+   * category between groups is `setCategoryLayout`'s, on the plan.
+   */
+  const reorderBudgets = useCallback(
+    (orderedIds) => {
+      setBudgets((previous) => reorderSubset(previous, orderedIds));
+      return { ok: true };
+    },
+    [setBudgets]
+  );
+
+  const reorderGroups = useCallback(
+    (orderedIds) => {
+      setGroups((previous) => reorderSubset(previous, orderedIds));
+      return { ok: true };
+    },
+    [setGroups]
+  );
+
   // Memoised so a change in any other store does not re-render every consumer
   // of this one.
   const value = useMemo(
@@ -576,6 +599,8 @@ export const BudgetsProvider = ({ children }) => {
       updateGroup,
       deleteGroup,
       setCategoryLayout,
+      reorderBudgets,
+      reorderGroups,
     }),
     [
       groups,
@@ -589,6 +614,8 @@ export const BudgetsProvider = ({ children }) => {
       updateGroup,
       deleteGroup,
       setCategoryLayout,
+      reorderBudgets,
+      reorderGroups,
     ]
   );
 

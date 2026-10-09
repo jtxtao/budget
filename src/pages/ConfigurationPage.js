@@ -102,8 +102,8 @@ export default function ConfigurationPage() {
   const [fundError, setFundError] = useState(null);
 
   const { updateBudget, deleteBudget, deleteGroup, setCategoryLayout } = useBudgets();
-  const { deleteIncomeSource } = useIncomePlan();
-  const { accounts, deleteAccount } = useAccounts();
+  const { deleteIncomeSource, reorderIncomeSources } = useIncomePlan();
+  const { accounts, deleteAccount, reorderAccounts } = useAccounts();
   const { schedule, setPaySchedule } = usePaySchedule();
   const { plan, setRetirementPlan } = useRetirement();
   const { setEmergencyFund, toggleFundAccount, setFundAccountAmount } = useEmergencyFundPlan();
@@ -276,6 +276,7 @@ export default function ConfigurationPage() {
               expectedIncomeCents={health.expectedIncomeCents}
               pretaxMonthlyCents={health.pretaxMonthlyCents}
               onDelete={deleteIncomeSource}
+              onReorder={reorderIncomeSources}
               actions={
                 <Button
                   variant="outline"
@@ -361,6 +362,7 @@ export default function ConfigurationPage() {
             onAdd={handleAddAccount}
             onEdit={handleEditAccount}
             onDelete={deleteAccount}
+            onReorder={reorderAccounts}
           />
         </div>
       </div>
