@@ -5,6 +5,8 @@ import DashboardSummary from "../components/DashboardSummary";
 import EnterScheduledModal from "../components/EnterScheduledModal";
 import MoveMoneyModal from "../components/MoveMoneyModal";
 import PageHeader from "../components/PageHeader";
+import PayOffCardModal from "../components/PayOffCardModal";
+import ReconcileModal from "../components/ReconcileModal";
 import ReconciliationList from "../components/ReconciliationList";
 import UpcomingBills from "../components/UpcomingBills";
 import { spendsThroughBudget, useAccounts } from "../contexts/AccountsContext";
@@ -46,7 +48,7 @@ export default function DashboardPage() {
   const today = todayISO();
   const period = currentPeriod();
 
-  const { reconcileAccount, accounts } = useAccounts();
+  const { accounts } = useAccounts();
   const { budgets } = useBudgets();
   const { payeeById } = usePayees();
   const { addTransaction } = useTransactions();
@@ -65,6 +67,10 @@ export default function DashboardPage() {
   // reset the form under the user mid-type.
   const [moving, setMoving] = useState(null);
   const [assigning, setAssigning] = useState(false);
+  // The account id each dialog is open on, resolved against the live rows so
+  // the balance it shows follows the ledger.
+  const [reconcilingId, setReconcilingId] = useState(null);
+  const [payingOffId, setPayingOffId] = useState(null);
 
   // What went out this month, less what came back into a category: a refund
   // undoes that much of the spending it answers, the way each category's own
@@ -291,7 +297,8 @@ export default function DashboardPage() {
           />
           <ReconciliationList
             rows={accountRows}
-            onReconcile={(account) => reconcileAccount({ id: account.id })}
+            onReconcile={(account) => setReconcilingId(account.id)}
+            onPayOff={(account) => setPayingOffId(account.id)}
           />
         </div>
       </div>
@@ -299,9 +306,21 @@ export default function DashboardPage() {
       {accountRows.length > 0 && (
         <p className="mt-3 font-sans text-row text-chalk-soft">
           Balances are the opening figure plus every transaction through the account, so they
-          follow the ledger — reconciling records that they agreed with the bank today.
+          follow the ledger — reconciling records that they agreed with the bank today, and adjusts
+          the books where the statement says otherwise.
         </p>
       )}
+
+      <ReconcileModal
+        show={reconcilingId != null}
+        row={accountRows.find((row) => row.account.id === reconcilingId) ?? null}
+        handleClose={() => setReconcilingId(null)}
+      />
+      <PayOffCardModal
+        show={payingOffId != null}
+        row={accountRows.find((row) => row.account.id === payingOffId) ?? null}
+        handleClose={() => setPayingOffId(null)}
+      />
 
       <MoveMoneyModal
         show={moving != null}

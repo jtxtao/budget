@@ -203,15 +203,86 @@ test("an account shows what it holds and when it last agreed with the bank", () 
   expect(screen.getByText("1 need checking")).toBeInTheDocument();
 });
 
-test("reconciling stamps today without touching the balance", () => {
+test("reconciling with the statement left blank stamps today without touching the balance", () => {
   seed();
   renderPage();
 
-  fireEvent.click(screen.getByRole("button", { name: "Mark Everyday reconciled" }));
+  fireEvent.click(screen.getByRole("button", { name: "Reconcile Everyday" }));
+  const dialog = screen.getByRole("dialog");
+  // The books' own figure is the default, shown in the field.
+  expect(within(dialog).getByLabelText("Statement balance")).toHaveAttribute("placeholder", "$800");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Reconcile" }));
 
-  expect(screen.getByText(new RegExp(formatDateMedium(TODAY)))).toBeInTheDocument();
+  expect(screen.getAllByText(new RegExp(formatDateMedium(TODAY))).length).toBeGreaterThan(0);
   expect(screen.getByText("All up to date")).toBeInTheDocument();
   expect(screen.getByText("$800")).toBeInTheDocument();
+  expect(JSON.parse(localStorage.getItem("transactions"))).toHaveLength(1);
+});
+
+test("a statement that disagrees adjusts the books before reconciling", () => {
+  seed();
+  renderPage();
+
+  fireEvent.click(screen.getByRole("button", { name: "Reconcile Everyday" }));
+  const dialog = screen.getByRole("dialog");
+  fireEvent.change(within(dialog).getByLabelText("Statement balance"), {
+    target: { value: "$775" },
+  });
+  // Money left that nobody wrote down, so it needs a category.
+  fireEvent.click(within(dialog).getByRole("button", { name: "Adjust and reconcile" }));
+  expect(within(dialog).getByRole("alert")).toHaveTextContent(/choose the category/i);
+
+  fireEvent.change(within(dialog).getByLabelText("Category"), { target: { value: "b2" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Adjust and reconcile" }));
+
+  expect(screen.getByText("$775")).toBeInTheDocument();
+  expect(screen.getByText("All up to date")).toBeInTheDocument();
+  const added = JSON.parse(localStorage.getItem("transactions")).find((t) => t.id !== "t1");
+  expect(added).toMatchObject({
+    kind: TRANSACTION_KINDS.OUTFLOW,
+    accountId: "acc1",
+    budgetId: "b2",
+    amountCents: 2500,
+    date: TODAY,
+  });
+});
+
+test("a credit card is paid off rather than reconciled, from a remembered account", () => {
+  const CARD = {
+    id: "card1",
+    name: "Visa",
+    type: "liability",
+    scope: "credit-card",
+    assetClass: "Other",
+    openingBalanceCents: -30000,
+    openingDate: null,
+    reconciledOn: null,
+  };
+  seed({ accounts: [ACCOUNT, CARD] });
+  renderPage();
+
+  expect(screen.queryByRole("button", { name: "Reconcile Visa" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Record paying off Visa" }));
+  let dialog = screen.getByRole("dialog");
+  expect(within(dialog).getByLabelText("Amount paid")).toHaveValue("300.00");
+  fireEvent.change(within(dialog).getByLabelText("Paid from"), { target: { value: "acc1" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Record payment" }));
+
+  const payment = JSON.parse(localStorage.getItem("transactions")).find((t) => t.id !== "t1");
+  expect(payment).toMatchObject({
+    kind: TRANSACTION_KINDS.TRANSFER,
+    accountId: "acc1",
+    toAccountId: "card1",
+    amountCents: 30000,
+  });
+  const stored = JSON.parse(localStorage.getItem("accounts")).find((a) => a.id === "card1");
+  expect(stored.payFromAccountId).toBe("acc1");
+  expect(stored.reconciledOn).toBe(TODAY);
+
+  // Next time it opens on the remembered account.
+  fireEvent.click(screen.getByRole("button", { name: "Record paying off Visa" }));
+  dialog = screen.getByRole("dialog");
+  expect(within(dialog).getByLabelText("Paid from")).toHaveValue("acc1");
 });
 
 test("off-budget accounts sit on Net worth, not the dashboard's account panel", () => {

@@ -482,6 +482,42 @@ export const AccountsProvider = ({ children }) => {
     [accounts, setAccounts]
   );
 
+  /**
+   * Which account a credit card is usually paid off from — a default for the
+   * "Paid off" dialog and nothing more, the payee-default rule: it moves no
+   * money and restates nothing already paid. `null` takes it off. Only an
+   * account the budget spends through and that is not itself a card can pay
+   * one, since paying a card from another card is a balance transfer and
+   * paying it from an off-budget holding is not budget money.
+   *
+   * Stored on the card only once stated, so a record that never named one
+   * keeps the shape it always had.
+   */
+  const setPayFromAccount = useCallback(
+    ({ id, payFromAccountId }) => {
+      if (!accounts.some((account) => account.id === id)) {
+        return { ok: false, error: "That account no longer exists." };
+      }
+      if (payFromAccountId != null) {
+        const source = accounts.find((account) => account.id === payFromAccountId);
+        if (
+          !source ||
+          source.id === id ||
+          source.scope !== ACCOUNT_SCOPES.ON_BUDGET
+        ) {
+          return { ok: false, error: "Choose an on-budget account to pay it from." };
+        }
+      }
+      setAccounts((prevAccounts) =>
+        prevAccounts.map((account) =>
+          account.id === id ? { ...account, payFromAccountId: payFromAccountId ?? null } : account
+        )
+      );
+      return { ok: true };
+    },
+    [accounts, setAccounts]
+  );
+
   // Deleting an account drops its balance history with it — there is nothing
   // meaningful to reassign those to. Its transactions are kept and cut loose
   // instead: the money moved and the envelopes it moved through are unchanged,
@@ -615,6 +651,7 @@ export const AccountsProvider = ({ children }) => {
       addAccount,
       updateAccount,
       reconcileAccount,
+      setPayFromAccount,
       deleteAccount,
       getAccountBalances,
       getPeriodBalances,
@@ -629,6 +666,7 @@ export const AccountsProvider = ({ children }) => {
       addAccount,
       updateAccount,
       reconcileAccount,
+      setPayFromAccount,
       deleteAccount,
       getAccountBalances,
       getPeriodBalances,

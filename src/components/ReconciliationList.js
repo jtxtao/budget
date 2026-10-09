@@ -1,5 +1,5 @@
 import Button from "./Button";
-import { ACCOUNT_TYPES, scopeLabel } from "../contexts/AccountsContext";
+import { ACCOUNT_SCOPES, ACCOUNT_TYPES, scopeLabel } from "../contexts/AccountsContext";
 import { formatCents, formatDateMedium, formatDayDelta } from "../utils";
 
 /**
@@ -40,7 +40,7 @@ function reconciliation(account, daysSince) {
   };
 }
 
-function ReconciliationRow({ account, balanceCents, daysSince, striped, onReconcile }) {
+function ReconciliationRow({ account, balanceCents, daysSince, striped, onReconcile, onPayOff }) {
   const status = reconciliation(account, daysSince);
   // The same single definition of trouble as everywhere else: something owned
   // that has gone under. A debt is negative by definition.
@@ -86,20 +86,35 @@ function ReconciliationRow({ account, balanceCents, daysSince, striped, onReconc
           <span className={status.tone}> · </span>
           <span className={`whitespace-nowrap ${status.tone}`}>{status.note}</span>
         </div>
-        <Button
-          variant="row-action"
-          size="sm"
-          aria-label={`Mark ${account.name} reconciled`}
-          onClick={() => onReconcile(account)}
-        >
-          Reconcile
-        </Button>
+        {/* A card is settled rather than checked: paying it off is the act a
+            household does with one each month, and it confirms the same thing
+            a reconciliation does. Everything else opens the reconcile dialog,
+            which can adjust the books when the statement disagrees. */}
+        {account.scope === ACCOUNT_SCOPES.CREDIT_CARD ? (
+          <Button
+            variant="row-action"
+            size="sm"
+            aria-label={`Record paying off ${account.name}`}
+            onClick={() => onPayOff(account)}
+          >
+            Paid off
+          </Button>
+        ) : (
+          <Button
+            variant="row-action"
+            size="sm"
+            aria-label={`Reconcile ${account.name}`}
+            onClick={() => onReconcile(account)}
+          >
+            Reconcile
+          </Button>
+        )}
       </div>
     </div>
   );
 }
 
-export default function ReconciliationList({ rows, onReconcile }) {
+export default function ReconciliationList({ rows, onReconcile, onPayOff }) {
   const unchecked = rows.filter(
     (row) => row.account.reconciledOn == null || row.daysSince > STALE_AFTER_DAYS
   ).length;
@@ -138,6 +153,7 @@ export default function ReconciliationList({ rows, onReconcile }) {
             daysSince={row.daysSince}
             striped={index % 2 === 1}
             onReconcile={onReconcile}
+            onPayOff={onPayOff}
           />
         ))
       )}
