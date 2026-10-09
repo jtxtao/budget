@@ -6,6 +6,7 @@ import Elder, { ELDER_MOODS } from "./Elder";
  * Money that has arrived and has not been given a job yet.
  *
  *   toBeAssigned = opening balances + all income received − everything assigned
+ *                  − what is held back for the emergency fund
  *
  * Both sides run cumulatively, so last month's leftover is still here to assign
  * and does not quietly expire at the month boundary.
@@ -25,6 +26,7 @@ export default function ToBeAssignedBar({
   toBeAssignedCents,
   periodIncomeCents,
   periodAssignedCents,
+  reservedCents = 0,
   onAssignClick,
 }) {
   // Sulfur is the caution slot, and money sitting unassigned is exactly that —
@@ -70,11 +72,14 @@ export default function ToBeAssignedBar({
 
         <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
           {[
-            ["Received", periodIncomeCents],
-            ["Assigned", periodAssignedCents],
+            ["Received this month", periodIncomeCents],
+            ["Assigned this month", periodAssignedCents],
+            // Said where the pool is, so a figure smaller than the accounts
+            // suggest is explained rather than mysterious.
+            ...(reservedCents > 0 ? [["Held for emergency fund", reservedCents]] : []),
           ].map(([label, cents]) => (
             <div key={label} className="flex items-baseline gap-2">
-              <dt className="font-mono text-label uppercase text-chalk-soft">{label} this month</dt>
+              <dt className="font-mono text-label uppercase text-chalk-soft">{label}</dt>
               <dd className="font-mono text-row tabular-nums text-chalk">{formatCents(cents)}</dd>
             </div>
           ))}

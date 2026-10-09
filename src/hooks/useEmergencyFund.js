@@ -130,6 +130,17 @@ export default function useEmergencyFund() {
 
       accountRows,
       heldCents,
+      // What the pool may not hand out: the money held back as the fund, up to
+      // its target where it has one. It sits in on-budget accounts, so without
+      // this it would read as "to be assigned" and be spent twice over —
+      // `useEnvelopes` takes it off the pool. Floored at zero so a ticked debt
+      // cannot add money to the pool.
+      reservedCents: !fund.holdBack
+        ? 0
+        : targetCents > 0
+          ? Math.min(Math.max(0, heldCents), targetCents)
+          : Math.max(0, heldCents),
+
       // Floored at zero, the `useSavingsGoalEnvelopes` rule: a fund that is over
       // its target does not owe money back.
       remainingCents: Math.max(0, targetCents - heldCents),

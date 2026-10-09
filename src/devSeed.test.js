@@ -68,13 +68,20 @@ test("the records survive the stores' own migrations unchanged in count", () => 
 test("the envelope identity holds over the invented books", () => {
   const period = currentPeriod();
   const { result } = renderHook(() => useEnvelopes(period), { wrapper });
-  const { rows, goalRows, toBeAssignedCents, cumIncomeCents, cumSpentCents, openingCents } =
-    result.current;
+  const {
+    rows,
+    goalRows,
+    toBeAssignedCents,
+    emergencyReservedCents,
+    cumIncomeCents,
+    cumSpentCents,
+    openingCents,
+  } = result.current;
 
   const available = rows.reduce((sum, row) => sum + row.availableCents, 0);
   const goalAvailable = goalRows.reduce((sum, row) => sum + row.availableCents, 0);
 
-  expect(toBeAssignedCents + available + goalAvailable).toBe(
+  expect(toBeAssignedCents + emergencyReservedCents + available + goalAvailable).toBe(
     openingCents + cumIncomeCents - cumSpentCents
   );
 });

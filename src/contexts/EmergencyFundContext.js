@@ -91,6 +91,12 @@ export const DEFAULT_FUND = {
   // balance; there is no "zero" entry, since an account contributing nothing is
   // one that is not ticked.
   accountAmounts: {},
+  // Whether what the fund holds is kept out of "to be assigned". On by
+  // default: the fund's money sits in on-budget accounts, so without this it
+  // reads as free to assign and can be spent twice. Off is for a household
+  // that already sets the fund aside through a category of its own, where
+  // holding it back as well would count it twice.
+  holdBack: true,
 };
 
 export function useEmergencyFundPlan() {
@@ -116,6 +122,7 @@ function migrateFund(stored) {
       ? [...new Set(fund.accountIds.filter((id) => typeof id === "string"))]
       : [],
     accountAmounts: readAmounts(fund.accountAmounts),
+    holdBack: fund.holdBack !== false,
   };
 }
 
@@ -187,6 +194,10 @@ export const EmergencyFundProvider = ({ children }) => {
           return { ok: false, error: "Choose which accounts hold the fund." };
         }
         patch.accountIds = [...new Set(changes.accountIds.filter((id) => typeof id === "string"))];
+      }
+
+      if (changes.holdBack !== undefined) {
+        patch.holdBack = changes.holdBack === true;
       }
 
       // Functional updater rather than the closed-over record: index.js renders

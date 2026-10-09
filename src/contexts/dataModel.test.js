@@ -2167,7 +2167,8 @@ function expectBalanced(env) {
   // so it has to land back on this side of the identity the same way — see
   // the comment on goalRows in useEnvelopes.
   const goalAvailable = env.goalRows.reduce((sum, row) => sum + row.availableCents, 0);
-  expect(env.toBeAssignedCents + available + goalAvailable).toBe(
+  // Money held back for the emergency fund is still there, just not free.
+  expect(env.toBeAssignedCents + env.emergencyReservedCents + available + goalAvailable).toBe(
     env.openingCents + env.cumIncomeCents - env.cumSpentCents
   );
 }

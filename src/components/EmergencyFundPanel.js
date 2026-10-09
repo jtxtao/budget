@@ -267,6 +267,32 @@ export default function EmergencyFundPanel({
         </p>
       )}
 
+      {/* Commits on change: a tick has nothing to half-type. */}
+      <div className="border-t border-edge px-4 py-3">
+        <label className="flex items-start gap-2 font-sans text-row text-chalk">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={fund.fund.holdBack !== false}
+            aria-describedby="emergency-fund-hold-note"
+            onChange={(event) => onChange({ holdBack: event.target.checked })}
+          />
+          Hold this money back from To be assigned
+        </label>
+        <p id="emergency-fund-hold-note" className="mt-1 pl-6 font-sans text-row text-chalk-soft">
+          {fund.fund.holdBack !== false && fund.reservedCents > 0 ? (
+            <>
+              <span className="text-chalk">{formatCents(fund.reservedCents)}</span> is kept out of
+              the money you can assign, so it cannot be given to another category.
+            </>
+          ) : (
+            <>
+              Leave this off if you already set the fund aside through a category of its own.
+            </>
+          )}
+        </p>
+      </div>
+
       {error && (
         <p role="alert" className="border-t border-edge px-4 py-3 font-sans text-row text-vermilion">
           {error}

@@ -5,7 +5,8 @@ import { useBudgets } from "../contexts/BudgetsContext";
 import { useSavingsGoalAssignments } from "../contexts/SavingsGoalAssignmentsContext";
 import { budgetLegs, TRANSACTION_KINDS, useTransactions } from "../contexts/TransactionsContext";
 import { UNCATEGORIZED_BUDGET_ID } from "../contexts/constants";
-import { periodLTE, toPeriod } from "../utils";
+import { currentPeriod, periodLTE, toPeriod } from "../utils";
+import useEmergencyFund from "./useEmergencyFund";
 
 /**
  * Every figure the envelope view needs, for one period.
@@ -22,11 +23,15 @@ import { periodLTE, toPeriod } from "../utils";
  *   activity(b, p)  = refunded(b,p) − spent(b,p)
  *   available(b, P) = Σ over p ≤ P of [ assigned(b,p) + activity(b,p) ]
  *   carriedIn(b, P) = the same sum over p < P
- *   toBeAssigned(P) = opening(P) + Σ over p ≤ P of [ income(p) − Σ over b of assigned(b,p) − Σ over g of assigned(g,p) ]
+ *   toBeAssigned(P) = opening(P) + Σ over p ≤ P of [ income(p) − Σ over b of assigned(b,p) − Σ over g of assigned(g,p) ] − reserved(P)
  *
  * so that, at every period:
  *
- *   toBeAssigned + Σ available + Σ goal available === opening + cumulative inflow − cumulative spend
+ *   toBeAssigned + reserved + Σ available + Σ goal available
+ *     === opening + cumulative inflow − cumulative spend
+ *
+ * where `reserved` is the emergency fund held back from the pool (from the
+ * current month on — see `emergencyReservedCents`).
  *
  * which is cash on hand. That identity is the tripwire the tests assert after
  * every mutation. It holds only if the row set below covers *every* budgetId
@@ -84,6 +89,13 @@ import { periodLTE, toPeriod } from "../utils";
  * until their month arrives.
  */
 export default function useEnvelopes(period) {
+  // The emergency fund's money is in on-budget accounts and so in the pool;
+  // held back here so it cannot be assigned to anything else. Only from the
+  // current month on — it is today's reading, and a month already past was
+  // assigned without it.
+  const { reservedCents: fundReservedCents } = useEmergencyFund();
+  const emergencyReservedCents = periodLTE(currentPeriod(), period) ? fundReservedCents : 0;
+
   const { budgets } = useBudgets();
   const { transactions } = useTransactions();
   const { assignments } = useAssignments();
@@ -309,7 +321,15 @@ export default function useEnvelopes(period) {
       rows,
       goalRows,
       toBeAssignedCents:
-        openingCents + cumPoolIncomeCents - assignedThroughCents - goalAssignedThroughCents,
+        openingCents +
+        cumPoolIncomeCents -
+        assignedThroughCents -
+        goalAssignedThroughCents -
+        emergencyReservedCents,
+      // Held back for the emergency fund, out of `toBeAssignedCents`. A term of
+      // the identity in its own right: the money is still there, just not
+      // free to assign.
+      emergencyReservedCents,
       totalAvailableCents: totals.available,
       totalCarriedInCents: totals.carriedIn,
       periodIncomeCents,
@@ -321,5 +341,5 @@ export default function useEnvelopes(period) {
       cumIncomeCents,
       cumSpentCents,
     };
-  }, [budgets, transactions, assignments, goalAssignments, accounts, period]);
+  }, [budgets, transactions, assignments, goalAssignments, accounts, period, emergencyReservedCents]);
 }

@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import AppProviders from "../contexts/AppProviders";
 import { useEmergencyFundPlan } from "../contexts/EmergencyFundContext";
 import useEmergencyFund from "./useEmergencyFund";
+import useEnvelopes from "./useEnvelopes";
 import { currentPeriod, fromBps } from "../utils";
 
 /**
@@ -310,6 +311,7 @@ describe("what is stored", () => {
       targetCents: null,
       accountIds: [],
       accountAmounts: {},
+      holdBack: true,
     });
   });
 
@@ -326,6 +328,47 @@ describe("what is stored", () => {
       targetCents: 2500000,
       accountIds: [],
       accountAmounts: {},
+      holdBack: true,
     });
+  });
+});
+
+describe("holding the fund back from the pool", () => {
+  function setupPool() {
+    const { result } = renderHook(
+      () => ({ env: useEnvelopes(PERIOD), store: useEmergencyFundPlan() }),
+      { wrapper }
+    );
+    return {
+      env: () => result.current.env,
+      act: (fn) => act(() => fn(result.current.store)),
+    };
+  }
+
+  test("what the fund holds, up to its target, cannot be assigned", () => {
+    seed();
+    const pool = setupPool();
+    // $9,000 + $1,000 opening, nothing assigned.
+    expect(pool.env().toBeAssignedCents).toBe(1000000);
+
+    pool.act((store) => store.toggleFundAccount({ accountId: "acc-save", included: true }));
+    // The $9,000 savings is under the $11,400 target, so all of it is held.
+    expect(pool.env().emergencyReservedCents).toBe(900000);
+    expect(pool.env().toBeAssignedCents).toBe(100000);
+
+    // A smaller target holds back only the target.
+    pool.act((store) => store.setEmergencyFund({ monthsCovered: "3" }));
+    expect(pool.env().emergencyReservedCents).toBe(570000);
+    expect(pool.env().toBeAssignedCents).toBe(430000);
+  });
+
+  test("can be switched off for a fund kept in a category of its own", () => {
+    seed();
+    const pool = setupPool();
+    pool.act((store) => store.toggleFundAccount({ accountId: "acc-save", included: true }));
+    pool.act((store) => store.setEmergencyFund({ holdBack: false }));
+
+    expect(pool.env().emergencyReservedCents).toBe(0);
+    expect(pool.env().toBeAssignedCents).toBe(1000000);
   });
 });

@@ -753,6 +753,9 @@ const emergencyFund = {
   accountIds: [ACC.savings],
   // Part of the savings account is the buffer, not all of it.
   accountAmounts: { [ACC.savings]: 1_800_000 },
+  // The demo sets the fund aside through its "Emergency fund" category, so
+  // holding it back from the pool as well would count it twice.
+  holdBack: false,
 };
 
 const REC = {
