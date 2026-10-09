@@ -3,7 +3,7 @@ import { v4 as uuidV4 } from "uuid";
 import useSyncedState from "../hooks/useSyncedState";
 import { reorderSubset } from "../reorder";
 import { useTransactions } from "./TransactionsContext";
-import { formatPeriod, isValidISODate, toCents, todayISO, toPeriod } from "../utils";
+import { formatPeriod, isValidISODate, toBps, toCents, todayISO, toPeriod } from "../utils";
 
 /**
  * The accounts the money actually sits in, what each started at, and what each
@@ -29,6 +29,13 @@ import { formatPeriod, isValidISODate, toCents, todayISO, toPeriod } from "../ut
  * the one fact about an account no ledger can know — it says the books and the
  * bank were the same on that day, which is a thing the user did, not a thing
  * that happened to the money.
+ *
+ * An account the budget spends through may also carry `cashbackBps`: cash back
+ * the card pays straight onto its own balance — a prepaid card that reads $4,901
+ * after a $100 purchase. A rate and nothing more: the money itself is an
+ * ordinary inflow the entry form writes beside each purchase (see
+ * `src/cashback.js`). Stored only once stated, so an account that never named
+ * one keeps the shape it always had, the `payFromAccountId` rule.
  *
  * Storage and CRUD only — totals, allocation, and period-over-period change are
  * deliberately absent, and belong to the Net worth page when it is built.
@@ -312,7 +319,10 @@ export const AccountsProvider = ({ children }) => {
    * caller has to re-derive them and risk deriving them differently.
    */
   const validate = useCallback(
-    ({ name, type, scope, assetClass, opening, openingBalanceCents, openingDate }, exceptId) => {
+    (
+      { name, type, scope, assetClass, opening, openingBalanceCents, openingDate, cashback, cashbackBps },
+      exceptId
+    ) => {
       const trimmed = (name ?? "").trim();
       if (!trimmed) return { ok: false, error: "Give the account a name." };
 
@@ -352,7 +362,28 @@ export const AccountsProvider = ({ children }) => {
         return { ok: false, error: "Enter a valid date for the starting balance." };
       }
 
-      return { ok: true, name: trimmed, openingBalanceCents: signedOpeningCents(cents, type) };
+      // The form's percentage string where it sent one, else the stored rate.
+      // Blank and zero both mean none; a rate over 100% would pay back more than
+      // the purchase cost, which no card does and a typo easily could.
+      const rate =
+        cashback === undefined
+          ? cashbackBps ?? null
+          : String(cashback).trim() === ""
+            ? null
+            : toBps(cashback);
+      if (cashback !== undefined && String(cashback).trim() !== "" && rate == null) {
+        return { ok: false, error: "Enter the cash back as a percentage, like 1%." };
+      }
+      if (rate != null && (rate < 0 || rate > 10000)) {
+        return { ok: false, error: "Cash back has to be between 0% and 100%." };
+      }
+
+      return {
+        ok: true,
+        name: trimmed,
+        openingBalanceCents: signedOpeningCents(cents, type),
+        cashbackBps: rate === 0 ? null : rate,
+      };
     },
     [accounts]
   );
@@ -369,6 +400,8 @@ export const AccountsProvider = ({ children }) => {
       // mention the date is not claiming the money arrived this morning, and an
       // undated opening balance counts from the beginning of the books.
       openingDate = null,
+      cashback,
+      cashbackBps,
     }) => {
       const checked = validate({
         name,
@@ -378,6 +411,8 @@ export const AccountsProvider = ({ children }) => {
         opening,
         openingBalanceCents,
         openingDate,
+        cashback,
+        cashbackBps,
       });
       if (!checked.ok) return checked;
 
@@ -396,6 +431,7 @@ export const AccountsProvider = ({ children }) => {
           // typed from memory is exactly the balance most worth checking against
           // a statement, and stamping today's date would say it already had been.
           reconciledOn: null,
+          ...(checked.cashbackBps != null && { cashbackBps: checked.cashbackBps }),
         },
       ]);
       setBalances((prevBalances) =>
@@ -426,6 +462,9 @@ export const AccountsProvider = ({ children }) => {
       // figure. Dropped here rather than in the form, because it is this
       // merge that puts the stale copy there.
       if ("opening" in fields) delete next.openingBalanceCents;
+      // The same for the cash-back rate: a percentage typed into the form is
+      // the answer, including a blank that takes the rate off.
+      if ("cashback" in fields) delete next.cashbackBps;
       const checked = validate(next, id);
       if (!checked.ok) return checked;
 
@@ -438,6 +477,13 @@ export const AccountsProvider = ({ children }) => {
       // Letting it through would leave a second, staler copy of the figure on
       // the record.
       delete patch.opening;
+      delete patch.cashback;
+      // Written where there is a rate, or where there was one to take off — an
+      // account that never had one is not given a null it never asked for.
+      delete patch.cashbackBps;
+      if (checked.cashbackBps != null || existing.cashbackBps != null) {
+        patch.cashbackBps = checked.cashbackBps;
+      }
 
       setAccounts((prevAccounts) =>
         prevAccounts.map((account) => (account.id === id ? patch : account))

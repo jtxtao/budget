@@ -18,8 +18,9 @@ import { TRANSACTION_KINDS, useTransactions } from "../contexts/TransactionsCont
 import useAccountBalances from "../hooks/useAccountBalances";
 import useDashboard from "../hooks/useDashboard";
 import useNextPaycheck from "../hooks/useNextPaycheck";
+import useRecordCashback from "../hooks/useRecordCashback";
 import useUpcoming from "../hooks/useUpcoming";
-import { currentPeriod, daysBetween, formatDateLong, todayISO } from "../utils";
+import { currentPeriod, daysBetween, formatDateLong, toCents, todayISO } from "../utils";
 
 /**
  * Where the household stands today.
@@ -51,6 +52,7 @@ export default function DashboardPage() {
   const { budgets, reorderBudgets, reorderGroups } = useBudgets();
   const { payeeById } = usePayees();
   const { addTransaction } = useTransactions();
+  const recordCashback = useRecordCashback();
   const { advanceSchedule } = useSchedules();
   const { rows: balanceRows } = useAccountBalances(period);
   const paycheck = useNextPaycheck(today);
@@ -157,14 +159,27 @@ export default function DashboardPage() {
     });
     if (!result.ok) return result;
 
+    // A bill paid on a card that pays cash back earns it like any purchase.
+    const earned = recordCashback({
+      kind: schedule.kind,
+      amountCents: toCents(amount),
+      date,
+      accountId: schedule.accountId,
+      budgetId: schedule.budgetId,
+      splits: null,
+      payeeName: payeeById.get(schedule.payeeId)?.name,
+    });
+
     const advanced = advanceSchedule({ id: schedule.id, through: entering.date });
     // Reported on the page rather than swallowed: the money landed, so the modal
     // has done its job and closing it is right — but the bill will be offered
     // again, and the user has to know why.
     setScheduleError(
-      advanced.ok
-        ? null
-        : "The transaction was recorded, but the schedule could not be updated — it may be offered again."
+      !advanced.ok
+        ? "The transaction was recorded, but the schedule could not be updated — it may be offered again."
+        : !earned.ok
+          ? `The transaction was recorded, but its cash back was not: ${earned.error}`
+          : null
     );
     return { ok: true };
   }

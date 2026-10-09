@@ -1703,3 +1703,167 @@ describe("reminding about card offers", () => {
     expect(reminder()).toBeNull();
   });
 });
+
+describe("cash back paid onto the card", () => {
+  const PREPAID = {
+    id: "acc1",
+    name: "Prepaid",
+    openingBalanceCents: 500000,
+    cashbackBps: 100,
+  };
+
+  const type = (label, value) =>
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+
+  function openForm() {
+    seedBudgets(TWO_BUDGETS);
+    seedAccounts([PREPAID]);
+    render(
+      <Providers>
+        <TransactionHarness budgetIds={["a"]} />
+      </Providers>
+    );
+    fireEvent.click(screen.getByText("open a"));
+  }
+
+  test("a purchase also writes its cash back, as a refund to the same category", () => {
+    openForm();
+    type(/amount/i, "100");
+    // Said before saving, so the second row is never a surprise.
+    expect(screen.getByText(/adds \$1 back to Groceries/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    const [purchase, refund] = JSON.parse(localStorage.getItem("transactions"));
+    expect(purchase).toMatchObject({ kind: "outflow", amountCents: 10000, budgetId: "a" });
+    expect(refund).toEqual({
+      id: expect.any(String),
+      kind: "inflow",
+      payeeId: null,
+      description: "1% cash back on $100",
+      amountCents: 100,
+      date: todayISO(),
+      accountId: "acc1",
+      toAccountId: null,
+      budgetId: "a",
+      splits: null,
+    });
+  });
+
+  test("a divided receipt is refunded part by part, adding up to the whole", () => {
+    openForm();
+    type(/amount/i, "124");
+    fireEvent.click(screen.getByRole("button", { name: /split it between categories/i }));
+    type("Amount of part 1", "100");
+    fireEvent.click(screen.getByRole("button", { name: "Add a part" }));
+    type("Category of part 2", "b");
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    const refund = JSON.parse(localStorage.getItem("transactions"))[1];
+    expect(refund.amountCents).toBe(124);
+    expect(refund.splits).toEqual([
+      { id: expect.any(String), budgetId: "a", amountCents: 100 },
+      { id: expect.any(String), budgetId: "b", amountCents: 24 },
+    ]);
+  });
+
+  test("money in earns nothing", () => {
+    openForm();
+    fireEvent.click(screen.getByRole("button", { name: "Money in" }));
+    type(/amount/i, "100");
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(JSON.parse(localStorage.getItem("transactions"))).toHaveLength(1);
+  });
+
+  function AccountHarness() {
+    const [show, setShow] = useState(false);
+    const [account, setAccount] = useState(null);
+    const { accounts } = useAccounts();
+    return (
+      <>
+        <button
+          onClick={() => {
+            setAccount(null);
+            setShow(true);
+          }}
+        >
+          add
+        </button>
+        {accounts.map((existing) => (
+          <button
+            key={existing.id}
+            onClick={() => {
+              setAccount(existing);
+              setShow(true);
+            }}
+          >
+            edit {existing.name}
+          </button>
+        ))}
+        <AddAccountModal show={show} account={account} handleClose={() => setShow(false)} />
+      </>
+    );
+  }
+
+  const stored = () => JSON.parse(localStorage.getItem("accounts"));
+
+  test("the account form states the rate, and a blank takes it off", () => {
+    seedAccounts([]);
+    render(
+      <Providers>
+        <AccountHarness />
+      </Providers>
+    );
+    fireEvent.click(screen.getByText("add"));
+    type("Name", "Prepaid");
+    type(/cash back/i, "1.5%");
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(stored()[0].cashbackBps).toBe(150);
+
+    fireEvent.click(screen.getByText("edit Prepaid"));
+    expect(screen.getByLabelText(/cash back/i)).toHaveValue("1.5%");
+    type(/cash back/i, "");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(stored()[0].cashbackBps).toBeNull();
+  });
+
+  test("an account that never states a rate keeps the shape it had", () => {
+    seedAccounts([]);
+    render(
+      <Providers>
+        <AccountHarness />
+      </Providers>
+    );
+    fireEvent.click(screen.getByText("add"));
+    type("Name", "Everyday");
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(stored()[0]).not.toHaveProperty("cashbackBps");
+  });
+
+  test("a rate that is not a percentage is refused", () => {
+    seedAccounts([]);
+    render(
+      <Providers>
+        <AccountHarness />
+      </Providers>
+    );
+    fireEvent.click(screen.getByText("add"));
+    type("Name", "Prepaid");
+    type(/cash back/i, "lots");
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/percentage/i);
+    expect(stored()).toEqual([]);
+  });
+
+  test("an off-budget holding is not asked", () => {
+    seedAccounts([]);
+    render(
+      <Providers>
+        <AccountHarness />
+      </Providers>
+    );
+    fireEvent.click(screen.getByText("add"));
+    type("Budgeting", "off-budget");
+    expect(screen.queryByLabelText(/cash back/i)).not.toBeInTheDocument();
+  });
+});

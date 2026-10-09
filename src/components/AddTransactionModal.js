@@ -18,7 +18,9 @@ import useAccountBalances from "../hooks/useAccountBalances";
 import { orderPayeesByUse } from "../payeeSearch";
 import useCardOffers from "../hooks/useCardOffers";
 import { OFFER_KINDS, offerNudges } from "../rewards";
-import { amountAtRest, currentPeriod, formatCents, toCents, todayISO } from "../utils";
+import { cashbackCents } from "../cashback";
+import useRecordCashback from "../hooks/useRecordCashback";
+import { amountAtRest, currentPeriod, formatBps, formatCents, toCents, todayISO } from "../utils";
 
 /**
  * One form for every movement of money.
@@ -195,6 +197,7 @@ export default function AddTransactionModal({
   const [picked, setPicked] = useState({ budgetId: "", date: "" });
 
   const { addTransaction, transactions } = useTransactions();
+  const recordCashback = useRecordCashback();
   const { accounts } = useAccounts();
   const { budgets } = useBudgets();
   const { payees, addPayee, findPayeeByName } = usePayees();
@@ -519,6 +522,26 @@ export default function AddTransactionModal({
       return;
     }
 
+    // The card's cash back, as its own row beside the purchase. Written after
+    // it, so a refused purchase never leaves a refund for money not spent; a
+    // refused refund leaves the purchase, which is the money that really moved,
+    // and says so rather than closing as though both landed.
+    const earned = recordCashback({
+      kind,
+      amountCents: toCents(amountRef.current.value),
+      date: dateRef.current.value,
+      accountId: fromAccountId,
+      budgetId: splitting ? null : budgetIdRef.current?.value || null,
+      splits: splitting ? partsToSplits(parts) : null,
+      payeeName: resolvedPayeeId
+        ? payees.find((payee) => payee.id === resolvedPayeeId)?.name ?? payeeName.trim()
+        : payeeName.trim(),
+    });
+    if (!earned.ok) {
+      setError(`The purchase was saved, but its cash back was not: ${earned.error}`);
+      return;
+    }
+
     if (anotherRef.current) {
       anotherRef.current = false;
       startAnother();
@@ -571,6 +594,24 @@ export default function AddTransactionModal({
           amountCents: splitting ? null : totalCents,
         })
       : [];
+
+  // The card's cash back, said before saving so the second row it writes is
+  // never a surprise on the register.
+  const cashbackBps = isOutflow
+    ? accounts.find((account) => account.id === fromAccountId)?.cashbackBps
+    : null;
+  function cashbackNote() {
+    const rate = `${formatBps(cashbackBps)} cash back`;
+    if (totalCents == null) {
+      return `This card pays ${rate} onto its balance — saving adds it as its own row, a refund to the category.`;
+    }
+    const earned = cashbackCents(totalCents, cashbackBps);
+    if (earned <= 0) return `Too small to earn any of this card's ${rate}.`;
+    const category = splitting
+      ? "the categories it is split between"
+      : budgets.find((budget) => budget.id === picked.budgetId)?.name ?? "the category";
+    return `This card pays ${rate}: saving also adds ${formatCents(earned)} back to ${category}, as its own row.`;
+  }
 
   const describe = (account) => `${account.name} — ${formatCents(balanceById.get(account.id) ?? 0)}`;
 
@@ -790,6 +831,11 @@ export default function AddTransactionModal({
                 <li key={nudge.row.offer.id}>{describeNudge(nudge, totalCents != null && !splitting)}</li>
               ))}
             </ul>
+          )}
+          {cashbackBps > 0 && !blocked && (
+            <p aria-live="polite" className="-mt-1 mb-5 font-sans text-row text-chalk-soft">
+              {cashbackNote()}
+            </p>
           )}
           {/* Last of the fields, and after the category, because that is the order
               the questions are actually answered in: who, how much, when, from

@@ -10,7 +10,7 @@ import {
   toEnteredBalanceCents,
   useAccounts,
 } from "../contexts/AccountsContext";
-import { amountEditing, todayISO } from "../utils";
+import { amountEditing, formatBps, todayISO } from "../utils";
 
 /**
  * A place money sits — an account owned, or a debt owed — and what it held when
@@ -42,6 +42,13 @@ import { amountEditing, todayISO } from "../utils";
  * question most households could not usefully answer for an account that holds
  * a bit of everything, and nothing they budget with reads it — only the net
  * worth chart's bands do. So it is derived instead: see `assetClassFor`.
+ *
+ * **Cash back paid onto the balance** is asked of an account the budget spends
+ * through and of nothing else — a prepaid card that earns 1%, a credit card
+ * whose rewards land as a statement credit. A rate, not money: the entry form
+ * writes the cash back as its own row beside each purchase (`src/cashback.js`).
+ * It comes and goes with the scope like the kind select does, and takes the
+ * seed as its `defaultValue` for the same reason.
  *
  * A credit card is picked as a *scope*, not a kind, and picking it answers the
  * kind question outright: a card is money owed, so the form stops asking and
@@ -95,6 +102,7 @@ function seedFor(account, baseType, baseScope) {
     // Today is the right guess only for an account being stated for the first
     // time.
     openingDate: account ? account.openingDate ?? "" : todayISO(),
+    cashback: account?.cashbackBps ? formatBps(account.cashbackBps) : "",
   };
 }
 
@@ -111,6 +119,7 @@ export default function AddAccountModal({
   const scopeRef = useRef();
   const openingRef = useRef();
   const openingDateRef = useRef();
+  const cashbackRef = useRef();
   const [error, setError] = useState(null);
   // Mirror the two selects, and only so the fields below them can be shown or
   // hidden and the balance relabelled — the submitted values are still read from
@@ -131,6 +140,8 @@ export default function AddAccountModal({
   // held before it was taken off screen.
   const effectiveType = isCard ? ACCOUNT_TYPES.LIABILITY : type;
   const owed = effectiveType === ACCOUNT_TYPES.LIABILITY;
+  const spentThrough = scope !== ACCOUNT_SCOPES.OFF_BUDGET;
+  const seed = seedFor(account, baseType, baseScope);
 
   // The modal stays mounted, so clear the previous entry — and the previous
   // error — each time it opens, with the account's own values where it was
@@ -151,6 +162,7 @@ export default function AddAccountModal({
     // Absent for a card, and remounted holding the mirror above if the user
     // switches back to an account that has it.
     if (typeRef.current) typeRef.current.value = seed.type;
+    if (cashbackRef.current) cashbackRef.current.value = seed.cashback;
   }, [show, account, baseType, baseScope]);
 
   // One handler on the form, so both mirrors are set from whatever is on
@@ -184,6 +196,10 @@ export default function AddAccountModal({
       assetClass: assetClassFor(account, effectiveType, submittedScope),
       opening: openingRef.current.value,
       openingDate,
+      // Sent only while the field is on screen: an off-budget account was not
+      // asked, and a rate it carried from before is kept, inert, rather than
+      // cleared by a question nobody put.
+      ...(cashbackRef.current && { cashback: cashbackRef.current.value }),
     };
     const result = editing ? updateAccount({ id: account.id, ...fields }) : addAccount(fields);
 
@@ -245,6 +261,24 @@ export default function AddAccountModal({
           type="date"
           defaultValue={todayISO()}
         />
+        {spentThrough && (
+          <>
+            <Field
+              label="Cash back onto the balance"
+              inputRef={cashbackRef}
+              type="text"
+              inputMode="decimal"
+              placeholder="None"
+              defaultValue={seed.cashback}
+              aria-describedby="account-cashback-help"
+            />
+            <p id="account-cashback-help" className="-mt-3 mb-5 font-sans text-row text-chalk-soft">
+              For a card that pays its rewards straight back onto itself — 1% means a $100
+              purchase costs the balance $99. Each purchase gets a cash-back row of its own, filed
+              as a refund to the purchase's category.
+            </p>
+          </>
+        )}
         {error && (
           <p role="alert" className="-mt-2 mb-5 font-sans text-row text-vermilion">
             {error}
