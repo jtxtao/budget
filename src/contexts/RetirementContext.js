@@ -109,14 +109,16 @@ export const MAX_SHARE_BPS = 20000;
  * half. So the projection deflates both rates by this one, and reports what it
  * used.
  *
- * `lifeExpectancy` gets a default and the other two ages do not, because it is
- * the one age here the user is not stating a fact about: it is an assumption,
- * and ninety is the conventional conservative one. Their current age and the age
- * they want to stop working are theirs to say.
+ * `lifeExpectancy` and `retirementAge` get defaults and `currentAge` does not:
+ * ninety is the conventional conservative horizon and sixty-five the
+ * conventional retirement age, both shown in their fields, while an age today
+ * is a fact nobody else can state. **A default shown in a field is a default
+ * in force** — clearing one of these, or a rate, puts the default back rather
+ * than storing a blank or a zero the field would not have shown.
  */
 export const DEFAULT_PLAN = {
   currentAge: null,
-  retirementAge: null,
+  retirementAge: 65,
   lifeExpectancy: 90,
 
   startingSource: STARTING_SOURCES.ACCOUNTS,
@@ -239,7 +241,7 @@ export function migratePlan(stored) {
 
   return {
     currentAge: take(plan.currentAge, isAge, null),
-    retirementAge: take(plan.retirementAge, isAge, null),
+    retirementAge: take(plan.retirementAge, isAge, DEFAULT_PLAN.retirementAge),
     lifeExpectancy: take(plan.lifeExpectancy, isAge, DEFAULT_PLAN.lifeExpectancy),
 
     startingSource: STARTING_SOURCE_VALUES.includes(plan.startingSource)
@@ -330,7 +332,7 @@ export const RetirementProvider = ({ children }) => {
         const value = changes[field];
         if (value === undefined) return null;
         if (isBlank(value)) {
-          patch[field] = null;
+          patch[field] = DEFAULT_PLAN[field];
           return null;
         }
         const years = Number(value);
@@ -345,8 +347,9 @@ export const RetirementProvider = ({ children }) => {
         const value = changes[field];
         if (value === undefined) return null;
         // A rate has no "unstated" state — the projection has to grow the money
-        // at something — so a cleared field reads as zero rather than as null.
-        const bps = isBlank(value) ? 0 : toBps(value);
+        // at something — so a cleared field puts the default back, the figure
+        // the field shows in grey.
+        const bps = isBlank(value) ? DEFAULT_PLAN[field] : toBps(value);
         if (bps == null || !isRate(bps)) {
           return `Enter ${label} as a percentage between 0 and ${MAX_RATE_BPS / 100}.`;
         }
@@ -386,7 +389,9 @@ export const RetirementProvider = ({ children }) => {
       if (error) return { ok: false, error };
 
       if (changes.incomeShareBps !== undefined) {
-        const bps = isBlank(changes.incomeShareBps) ? 0 : toBps(changes.incomeShareBps);
+        const bps = isBlank(changes.incomeShareBps)
+          ? DEFAULT_PLAN.incomeShareBps
+          : toBps(changes.incomeShareBps);
         if (bps == null || !isShare(bps)) {
           return {
             ok: false,

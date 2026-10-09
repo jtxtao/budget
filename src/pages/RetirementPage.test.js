@@ -100,7 +100,9 @@ describe("a plan that cannot be answered yet", () => {
     renderPage();
 
     expect(within(outlook()).getByText("Enter your age today.")).toBeInTheDocument();
-    expect(within(outlook()).getByText("Enter the age you want to retire.")).toBeInTheDocument();
+    // The retirement age is not asked for: it runs on the 65 its field shows.
+    expect(within(outlook()).queryByText("Enter the age you want to retire.")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Retire at")).toHaveValue(65);
     expect(screen.queryByText("Year by year")).not.toBeInTheDocument();
   });
 

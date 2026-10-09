@@ -28,10 +28,24 @@ import { addDays, daysBetween, isValidISODate, todayISO } from "./utils";
 export const PAY_CADENCES = {
   weekly: { label: "Weekly", kind: "interval", days: 7 },
   biweekly: { label: "Every 2 weeks", kind: "interval", days: 14 },
-  semimonthly: { label: "Twice a month", kind: "monthdays", count: 2 },
-  monthly: { label: "Monthly", kind: "monthdays", count: 1 },
+  semimonthly: { label: "Twice a month", kind: "monthdays", count: 2, defaultDays: [15, 31] },
+  monthly: { label: "Monthly", kind: "monthdays", count: 1, defaultDays: [15] },
   custom: { label: "Every so many days", kind: "interval", days: null },
 };
+
+/**
+ * What a custom interval runs on when no count has been typed — the figure its
+ * field shows in grey. **A figure shown in a field is a figure in force**: a
+ * grey number the schedule then ignored would read as an answer and leave the
+ * countdown blank, so an unanswered field means its default rather than
+ * "not yet". Typing a figure replaces it; clearing the field puts it back.
+ */
+export const DEFAULT_PERIOD_DAYS = 10;
+
+/** The day a monthdays field means while blank, by position — the same rule. */
+export function defaultPayDay(cadence, index) {
+  return payCadence(cadence)?.defaultDays?.[index] ?? null;
+}
 
 /** In the order the picker offers them: shortest interval first, custom last. */
 export const PAY_CADENCE_KEYS = Object.keys(PAY_CADENCES);
@@ -76,7 +90,7 @@ export function cadenceForDays(days) {
 export function intervalDaysFor(schedule) {
   const def = payCadence(schedule?.cadence);
   if (def?.kind !== "interval") return null;
-  const days = def.days ?? schedule?.periodDays ?? null;
+  const days = def.days ?? schedule?.periodDays ?? DEFAULT_PERIOD_DAYS;
   return Number.isInteger(days) && days > 0 ? days : null;
 }
 
@@ -93,7 +107,9 @@ export function payDaysFor(schedule) {
   const def = payCadence(schedule?.cadence);
   if (def?.kind !== "monthdays") return [];
   const stored = Array.isArray(schedule?.daysOfMonth) ? schedule.daysOfMonth : [];
-  return stored.slice(0, def.count);
+  return Array.from({ length: def.count }, (_, index) =>
+    isPayDay(stored[index]) ? stored[index] : def.defaultDays[index]
+  );
 }
 
 /** Every field the cadence needs has been answered. */

@@ -30,9 +30,9 @@ import { formatCents } from "../utils";
  * until the day it is met.
  *
  * **Funding is a reading against the plan, not a second definition of trouble**,
- * and it is carried by **the category's own name** — red for short (overspent,
- * or underfunded), yellow for on track, green for a month ahead or a goal
- * reached. `src/fundingStatus.js` is the rule; this file only maps it to tones.
+ * and it is carried by **the category's own name** — red only when Available
+ * is below zero, yellow for money left that will not see the month out, green
+ * for the month covered or a goal reached. `src/fundingStatus.js` is the rule; this file only maps it to tones.
  *
  * It was a column of its own, and the column was the wrong shape for it: a
  * reading that applies to the whole row does not need a cell, and spending a
@@ -84,16 +84,19 @@ const visibility = (column) => (column.wide ? "hidden sm:table-cell" : "");
 const headCell = "whitespace-nowrap px-3 py-2 text-right font-mono text-label uppercase text-chalk";
 
 /**
- * The dashboard's three colours for a funding reading, in whole class names so
- * Tailwind's scanner finds them (see `bucketTones.js`). Overspent and
- * underfunded share red — both are envelopes that will not see the month out —
- * and are told apart by their word and by the Available figure, which only an
- * overspent row draws in red.
+ * The dashboard's three colours, in whole class names so Tailwind's scanner
+ * finds them (see `bucketTones.js`). **The colour follows what the envelope
+ * holds**, not how it got there: red is the app's one definition of trouble —
+ * Available below zero — and nothing else. A category that is short of the
+ * rest of its month but still holds money is yellow, so moving money out of
+ * it to cover a neighbour does not paint it red. Green is a category that
+ * holds what its month still needs (on track or a month ahead) or has
+ * reached its goal.
  */
 export const FUNDING_TONES = {
   [FUNDING.OVERSPENT]: { stripe: "border-l-vermilion", dot: "bg-vermilion", text: "text-vermilion" },
-  [FUNDING.UNDERFUNDED]: { stripe: "border-l-vermilion", dot: "bg-vermilion", text: "text-vermilion" },
-  [FUNDING.ON_TRACK]: { stripe: "border-l-sulfur", dot: "bg-sulfur", text: "text-sulfur" },
+  [FUNDING.UNDERFUNDED]: { stripe: "border-l-sulfur", dot: "bg-sulfur", text: "text-sulfur" },
+  [FUNDING.ON_TRACK]: { stripe: "border-l-verdant", dot: "bg-verdant", text: "text-verdant" },
   [FUNDING.WELL_FUNDED]: { stripe: "border-l-verdant", dot: "bg-verdant", text: "text-verdant" },
   // The ordinary ink, not a grey: a category nobody has written an estimate for
   // is unplanned, and a greyed-out name reads as one that has been switched off.
@@ -102,9 +105,9 @@ export const FUNDING_TONES = {
 
 /** The legend's three, in the order a reader is asked to care about them. */
 const LEGEND = [
+  { tone: FUNDING_TONES[FUNDING.OVERSPENT], label: "Overspent" },
   { tone: FUNDING_TONES[FUNDING.UNDERFUNDED], label: "Short" },
-  { tone: FUNDING_TONES[FUNDING.ON_TRACK], label: "On track" },
-  { tone: FUNDING_TONES[FUNDING.WELL_FUNDED], label: "Well funded" },
+  { tone: FUNDING_TONES[FUNDING.ON_TRACK], label: "Funded" },
 ];
 
 /**
@@ -183,8 +186,9 @@ function Figure({ cents, tone = "text-ink", onClick, label, className = "" }) {
 function cellFor(row, key) {
   if (key === "availableCents") {
     // The one definition of trouble: the envelope is empty and still paying
-    // out.
-    const tone = row.availableCents < 0 ? "font-medium text-vermilion-ink" : "font-medium text-ink";
+    // out. The figure takes the row's colour, since the colour is a reading of
+    // this figure.
+    const tone = row.availableCents < 0 ? "font-medium text-vermilion-ink" : `font-medium ${FUNDING_TONES[row.funding.status].text}`;
     return { cents: row.availableCents, tone };
   }
   if (key === "goalCents") return { cents: row.goalCents, tone: "text-ink-soft" };

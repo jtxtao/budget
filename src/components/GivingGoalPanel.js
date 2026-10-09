@@ -72,7 +72,7 @@ export default function GivingGoalPanel({ year, goal, error, onChange }) {
                 // outright — the box looks filled and reads back empty.
                 type="text"
                 inputMode="decimal"
-                placeholder="10%"
+                placeholder="e.g. 10%"
                 // Divided rather than taken through `fromBps`, which would
                 // multiply straight back and leave 10.5% reading as
                 // "10.500000000000002" in the box.

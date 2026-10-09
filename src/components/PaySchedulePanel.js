@@ -1,8 +1,10 @@
 import { Fragment } from "react";
 import {
   LAST_DAY,
+  DEFAULT_PERIOD_DAYS,
   PAY_CADENCES,
   PAY_CADENCE_KEYS,
+  defaultPayDay,
   payCadence,
 } from "../paySchedule";
 import { formatDateMedium, formatDayDelta } from "../utils";
@@ -132,7 +134,7 @@ export default function PaySchedulePanel({ schedule, paycheck, error, onChange }
               type="number"
               min={1}
               step={1}
-              placeholder="10"
+              placeholder={String(DEFAULT_PERIOD_DAYS)}
               defaultValue={schedule.periodDays ?? ""}
               className={inputClass}
               onBlur={(event) => onChange({ periodDays: event.target.value })}
@@ -153,7 +155,7 @@ export default function PaySchedulePanel({ schedule, paycheck, error, onChange }
                     min={1}
                     max={LAST_DAY}
                     step={1}
-                    placeholder={index === 0 ? "15" : String(LAST_DAY)}
+                    placeholder={String(defaultPayDay(schedule.cadence, index))}
                     aria-label={DAY_FIELD_LABELS[index]}
                     aria-describedby={DAY_NOTE_ID}
                     defaultValue={days[index] ?? ""}

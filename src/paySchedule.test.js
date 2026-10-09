@@ -56,10 +56,11 @@ describe("interval cadences", () => {
     const tenDaily = schedule({ cadence: "custom", periodDays: 10, lastPaidOn: "2026-08-10" });
 
     expect(nextPayday(tenDaily, "2026-08-13").nextDate).toBe("2026-08-20");
-    // A custom cadence with no length stated cannot place anything.
-    expect(isScheduleConfigured(schedule({ cadence: "custom", lastPaidOn: "2026-08-10" }))).toBe(
-      false
-    );
+    // A custom cadence with no length stated runs on the default its field
+    // shows, rather than on nothing.
+    const unstated = schedule({ cadence: "custom", lastPaidOn: "2026-08-10" });
+    expect(isScheduleConfigured(unstated)).toBe(true);
+    expect(nextPayday(unstated, "2026-08-13").nextDate).toBe("2026-08-20");
   });
 });
 
@@ -101,11 +102,12 @@ describe("twice a month", () => {
     expect(nextPayday(monthly(31), "2026-05-20").nextDate).toBe("2026-05-29");
   });
 
-  test("nothing is placed until every day is answered", () => {
-    expect(isScheduleConfigured(semimonthly([15]))).toBe(false);
-    expect(isScheduleConfigured(semimonthly([15, null]))).toBe(false);
-    expect(isScheduleConfigured(semimonthly([15, 31]))).toBe(true);
-    expect(nextPayday(semimonthly([15, null]), "2026-08-13").nextDate).toBeNull();
+  test("a day left blank means the default its field shows", () => {
+    // The 15th and the last day — the figures shown in grey.
+    expect(payDaysFor(semimonthly([]))).toEqual([15, 31]);
+    expect(payDaysFor(semimonthly([1, null]))).toEqual([1, 31]);
+    expect(isScheduleConfigured(semimonthly([]))).toBe(true);
+    expect(nextPayday(semimonthly([]), "2026-08-15").nextDate).toBe("2026-08-31");
   });
 
   test("the day a monthly cadence does not use is kept, not cleared", () => {

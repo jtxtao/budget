@@ -127,7 +127,7 @@ function SalaryList({ salaries, onAdd, onUpdate, onRemove }) {
             min={0}
             max={MAX_AGE}
             step={1}
-            placeholder="45"
+            placeholder="e.g. 45"
             className={inputClass}
           />
         </label>
@@ -137,7 +137,7 @@ function SalaryList({ salaries, onAdd, onUpdate, onRemove }) {
             ref={grossRef}
             type="text"
             inputMode="decimal"
-            placeholder="$120,000"
+            placeholder="e.g. $120,000"
             className={inputClass}
           />
         </label>

@@ -317,10 +317,11 @@ describe("the next paycheck", () => {
     expect(result.current.next.daysUntil).toBeLessThanOrEqual(17);
   });
 
-  test("half of a twice-monthly schedule is stored and says nothing", () => {
+  test("half of a twice-monthly schedule is stored, and the blank day means its default", () => {
     const result = setSchedule({ cadence: "semimonthly", daysOfMonth: [15] });
 
-    expect(result.current.next.configured).toBe(false);
+    // The second field shows "31" in grey, so the schedule runs on it.
+    expect(result.current.next.configured).toBe(true);
     expect(result.current.pay.schedule.daysOfMonth).toEqual([15]);
   });
 

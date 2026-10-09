@@ -428,7 +428,7 @@ describe("funding against the estimate", () => {
     expect(funding("Groceries")).toBe("Groceries, underfunded$600 short");
     expect(screen.getByText(/1 category short/)).toBeInTheDocument();
     expect(screen.getByRole("list", { name: "Funding key" })).toHaveTextContent(
-      /Short.*On track.*Well funded/
+      /Overspent.*Short.*Funded/
     );
   });
 

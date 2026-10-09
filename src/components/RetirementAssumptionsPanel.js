@@ -121,7 +121,6 @@ export default function RetirementAssumptionsPanel({
             min={0}
             max={MAX_AGE}
             step={1}
-            placeholder="40"
             seed={plan.currentAge}
             onCommit={(currentAge) => onChange({ currentAge })}
           />
