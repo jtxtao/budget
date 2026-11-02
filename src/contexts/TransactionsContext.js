@@ -5,6 +5,7 @@ import { readKey } from "../storage";
 import { useDonations } from "./DonationsContext";
 import { useActivity } from "./ActivityContext";
 import { isValidISODate, toCents, todayISO } from "../utils";
+import { applyTransactionRules } from "../domain/transactionRules";
 
 /**
  * Every movement of money, in one ledger.
@@ -378,6 +379,7 @@ function migrateTransactions(stored) {
         // such a record does hold stays where it is as its note.
         payeeId: transaction.payeeId ?? null,
         description: transaction.description ?? "",
+        ...(transaction.reviewed === false ? { reviewed: false } : {}),
         amountCents,
         date: transaction.date ?? null,
         accountId: transaction.accountId ?? null,
@@ -542,6 +544,39 @@ export const TransactionsProvider = ({ children }) => {
   );
   const { removeDonation } = useDonations();
   const { logActivity } = useActivity() ?? {};
+  const [rules, setRules] = useSyncedState("transactionRules", [], (stored) =>
+    Array.isArray(stored) ? stored.filter((rule) => rule && rule.id) : []
+  );
+
+  const saveRule = useCallback((rule) => {
+    const name = String(rule.name ?? "").trim();
+    if (!name) return { ok: false, error: "Name the rule." };
+    if (!rule.payeeId && !rule.accountId && !rule.descriptionContains && !rule.kind) {
+      return { ok: false, error: "Choose at least one condition." };
+    }
+    if (!rule.budgetId && !rule.note) return { ok: false, error: "Choose an action." };
+    const id = rule.id || uuidV4();
+    setRules((previous) => previous.some((item) => item.id === id)
+      ? previous.map((item) => item.id === id ? { ...rule, id, name, enabled: rule.enabled !== false } : item)
+      : [...previous, { ...rule, id, name, enabled: rule.enabled !== false }]);
+    return { ok: true, id };
+  }, [setRules]);
+  const deleteRule = useCallback((id) => setRules((previous) => previous.filter((rule) => rule.id !== id)), [setRules]);
+
+  const updateTransactionsBulk = useCallback(({ ids, patch, applyRules = false }) => {
+    const selected = new Set(ids);
+    const replacements = new Map();
+    for (const current of transactions) {
+      if (!selected.has(current.id)) continue;
+      const next = applyRules ? applyTransactionRules(current, rules) : { ...current, ...patch };
+      const changed = Object.keys(next).filter((key) => next[key] !== current[key]);
+      const result = firstBroken(next, new Set(changed));
+      if (!result.ok) return result;
+      replacements.set(current.id, next);
+    }
+    setTransactions((previous) => previous.map((row) => replacements.get(row.id) ?? row));
+    return { ok: true, count: replacements.size };
+  }, [transactions, rules, setTransactions]);
 
   // The two literal kinds, and a transfer is in neither: it is money the household
   // moved rather than money it earned or spent, and what the *budget* makes of one
@@ -610,7 +645,7 @@ export const TransactionsProvider = ({ children }) => {
       scheduled = false,
     }) => {
       const id = uuidV4();
-      const transaction = {
+      let transaction = {
         id,
         kind,
         // Normalised from "" the same way `accountId` and `budgetId` are: an
@@ -618,6 +653,7 @@ export const TransactionsProvider = ({ children }) => {
         // null.
         payeeId: payeeId || null,
         description: (description ?? "").trim(),
+        reviewed: false,
         amountCents: amountCents ?? toCents(amount),
         date,
         accountId: accountId || null,
@@ -634,6 +670,7 @@ export const TransactionsProvider = ({ children }) => {
         // the split editor — cannot come to disagree about what an empty part is.
         splits: readSplits(splits),
       };
+      transaction = applyTransactionRules(transaction, rules);
 
       // Every rule, because every field is being written. The one that keeps
       // the ledger finishable in one sitting is the last: an outflow names its
@@ -653,7 +690,7 @@ export const TransactionsProvider = ({ children }) => {
       });
       return { ok: true, id };
     },
-    [setTransactions, logActivity]
+    [setTransactions, logActivity, rules]
   );
 
   /**
@@ -685,6 +722,7 @@ export const TransactionsProvider = ({ children }) => {
       // which no record can have.
       if ("payeeId" in patch) changes.payeeId = patch.payeeId || null;
       if ("description" in patch) changes.description = (patch.description ?? "").trim();
+      if ("reviewed" in patch) changes.reviewed = patch.reviewed === true;
       if ("amountCents" in patch) changes.amountCents = patch.amountCents;
       else if ("amount" in patch) changes.amountCents = toCents(patch.amount);
       if ("date" in patch) changes.date = patch.date;
@@ -893,6 +931,10 @@ export const TransactionsProvider = ({ children }) => {
   const value = useMemo(
     () => ({
       transactions,
+      rules,
+      saveRule,
+      deleteRule,
+      updateTransactionsBulk,
       inflows,
       outflows,
       getBudgetTransactions,
@@ -907,6 +949,10 @@ export const TransactionsProvider = ({ children }) => {
     }),
     [
       transactions,
+      rules,
+      saveRule,
+      deleteRule,
+      updateTransactionsBulk,
       inflows,
       outflows,
       getBudgetTransactions,

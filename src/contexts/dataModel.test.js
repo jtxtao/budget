@@ -488,6 +488,7 @@ describe("a record can be corrected in place", () => {
       kind: TRANSACTION_KINDS.OUTFLOW,
       payeeId: null,
       description: "Coffee, twice",
+      reviewed: false,
       amountCents: 900,
       date: "2026-08-04",
       accountId: ACCOUNT.id,

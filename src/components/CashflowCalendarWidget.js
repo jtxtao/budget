@@ -129,7 +129,7 @@ export default function CashflowCalendarWidget({ report }) {
       found.push({ date, amountCents: cents, payeeId: last.payeeId, description: last.description || "Annual expense" });
     }
     return found;
-  }, [transactions, schedules, today, currentDate]);
+  }, [transactions, schedules, currentDate]);
 
   // Backtest each complete month against the preceding six-month average. This
   // gives the reader a concrete measure of how well the essential estimate has

@@ -9,6 +9,8 @@ import { ReportWidgetSettings } from "../components/ReportWidgetLayout";
 import PayeeList from "../components/PayeeList";
 import ScheduleList from "../components/ScheduleList";
 import TransactionsExportPanel from "../components/TransactionsExportPanel";
+import TransactionRulesPanel from "../components/TransactionRulesPanel";
+import TargetSettingsPanel from "../components/TargetSettingsPanel";
 import useTheme, { THEMES } from "../hooks/useTheme";
 import { RewardsValuationsPanel } from "./RewardsPage";
 
@@ -39,6 +41,8 @@ export default function SettingsPage() {
         <ScheduleList />
         <PayeeList />
         <TransactionsExportPanel />
+        <TransactionRulesPanel />
+        <TargetSettingsPanel />
         <DonationsTaxPanel />
         <BalanceHistoryPanel />
         <BooksFilePanel />

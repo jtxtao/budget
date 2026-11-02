@@ -226,6 +226,8 @@ function migrateBudgets(stored) {
       // string, a negative, a zero from storage edited by hand — reads the same
       // way, since a goal nobody can act on is no goal.
       goalCents: isGoal(budget.goalCents) ? budget.goalCents : null,
+      ...(["refill", "deadline"].includes(budget.targetMode) ? { targetMode: budget.targetMode } : {}),
+      ...(/^\d{4}-(0[1-9]|1[0-2])$/.test(budget.targetDate ?? "") ? { targetDate: budget.targetDate } : {}),
       // Stored only once stated, both of them — carried through rather than
       // reconstructed from a fixed field list the way everything above it is,
       // or a round trip through storage would silently drop a category back
@@ -396,7 +398,7 @@ export const BudgetsProvider = ({ children }) => {
    * are different instructions and only the field with a null state has both.
    */
   const updateBudget = useCallback(
-    ({ id, name, planned, plannedCents, goal, goalCents, bucket, rolloverEnabled, hidden }) => {
+    ({ id, name, planned, plannedCents, goal, goalCents, bucket, rolloverEnabled, hidden, targetMode, targetDate }) => {
       const existing = budgets.find((budget) => budget.id === id);
       if (!existing) return { ok: false, error: "That category no longer exists." };
 
@@ -427,6 +429,14 @@ export const BudgetsProvider = ({ children }) => {
       const goalRead = readGoal({ goal, goalCents });
       if (!goalRead) return { ok: false, error: GOAL_ERROR };
       if (goalRead.stated) patch.goalCents = goalRead.cents;
+      if (targetMode !== undefined) {
+        if (!["monthly", "refill", "deadline"].includes(targetMode)) return { ok: false, error: "Choose a target type." };
+        patch.targetMode = targetMode;
+      }
+      if (targetDate !== undefined) {
+        if (targetDate && !/^\d{4}-(0[1-9]|1[0-2])$/.test(targetDate)) return { ok: false, error: "Enter a target month." };
+        patch.targetDate = targetDate || null;
+      }
 
       if (bucket !== undefined) {
         if (!isBucket(bucket)) {

@@ -59,6 +59,7 @@ const PREFIX = "hb";
  */
 export const STORE_KEYS = [
   "transactions",
+  "transactionRules",
   "payees",
   "assignments",
   "budgets",
