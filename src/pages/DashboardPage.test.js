@@ -898,3 +898,27 @@ describe("drag to reorder", () => {
     ]);
   });
 });
+
+describe("the getting-started guide", () => {
+  // The dismissal lives in this browser only, so a second device or a cleared
+  // cache has no record of it. The books are what say a household is not new.
+  beforeEach(() => {
+    localStorage.removeItem("dashboardBudgetExplainerDismissed");
+    // jsdom has no layout, so no `scrollIntoView` for the coachmark to call.
+    Element.prototype.scrollIntoView = jest.fn();
+  });
+
+  test("is not shown to a household already keeping its books", () => {
+    seed();
+    renderPage();
+
+    expect(screen.queryByText("A quick guide to your budget")).not.toBeInTheDocument();
+  });
+
+  test("is shown to a household that has set up but recorded nothing yet", () => {
+    seed({ transactions: [], assignments: [] });
+    renderPage();
+
+    expect(screen.getByText("A quick guide to your budget")).toBeInTheDocument();
+  });
+});

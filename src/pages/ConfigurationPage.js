@@ -29,6 +29,7 @@ import useAccountBalances from "../hooks/useAccountBalances";
 import useEmergencyFund from "../hooks/useEmergencyFund";
 import useNetWorth from "../hooks/useNetWorth";
 import useNextPaycheck from "../hooks/useNextPaycheck";
+import useHouseholdInUse from "../hooks/useHouseholdInUse";
 import usePlanHealth from "../hooks/usePlanHealth";
 import useStartingBalances from "../hooks/useStartingBalances";
 import { currentPeriod } from "../utils";
@@ -140,6 +141,7 @@ export default function ConfigurationPage() {
   const { setEmergencyFund, toggleFundAccount, setFundAccountAmount } = useEmergencyFundPlan();
 
   const health = usePlanHealth();
+  const householdInUse = useHouseholdInUse();
   const fund = useEmergencyFund();
   const paycheck = useNextPaycheck();
   const { period: startingPeriod, poolCentsOverride: startingPoolCents } = useStartingBalances();
@@ -314,8 +316,12 @@ export default function ConfigurationPage() {
     (plan.pretaxContributionCents != null || skippedSetupSteps.has("pretax")) &&
     health.categoryCount > 0 &&
     (emergencyFundIsSetUp || skippedSetupSteps.has("emergency-fund"));
-  const setupStep =
-    nextAccountStep?.key ??
+  // The walk-through is for a household setting up, never one already keeping
+  // its books: the skips above live in this browser only, so a new device would
+  // otherwise restart setup over a full ledger. See `useHouseholdInUse`.
+  const setupStep = householdInUse
+    ? null
+    : nextAccountStep?.key ??
     (health.sourceCount === 0 && !skippedSetupSteps.has("income")
       ? "income"
       : (health.sourceCount > 0 || skippedSetupSteps.has("income")) &&

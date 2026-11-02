@@ -11,6 +11,7 @@ import { useSavingsGoalAssignments } from "../contexts/SavingsGoalAssignmentsCon
 import { useSavingsGoals } from "../contexts/SavingsGoalsContext";
 import useEnvelopes from "../hooks/useEnvelopes";
 import useGoalSpending from "../hooks/useGoalSpending";
+import useHouseholdInUse from "../hooks/useHouseholdInUse";
 import useSavingsGoalEnvelopes from "../hooks/useSavingsGoalEnvelopes";
 import { currentPeriod, formatCents } from "../utils";
 
@@ -48,6 +49,7 @@ export default function SavingsGoalsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingGoal, setEditingGoal] = useState(null);
   const [showAddExplainer, setShowAddExplainer] = useState(shouldShowAddExplainer);
+  const householdInUse = useHouseholdInUse();
   const period = currentPeriod();
 
   const { toBeAssignedCents } = useEnvelopes(period);
@@ -138,7 +140,7 @@ export default function SavingsGoalsPage() {
         />
       </div>
 
-      {showAddExplainer && rows.length > 0 && !showModal && (
+      {showAddExplainer && !householdInUse && rows.length > 0 && !showModal && (
         <SetupGuideCallout
           targetId={`savings-goal-add-${rows[0].goalId}`}
           title="Put money toward a goal"

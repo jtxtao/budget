@@ -127,6 +127,9 @@ export const SYNC_STATE = {
   LOCAL: "local",
 };
 
+/** `hydratedScope` before any scope's documents are in the cache. */
+const NOT_HYDRATED = Symbol("not hydrated");
+
 export const SyncProvider = ({ children }) => {
   const { status, userId } = useAuth();
   const { activeHouseholdId } = useHousehold();
@@ -167,7 +170,15 @@ export const SyncProvider = ({ children }) => {
 
   // Local-only runs need no hydration, so they start ready. A signed-in run
   // starts unhydrated and the render is gated below until the fetch lands.
-  const [hydrated, setHydrated] = useState(!remote);
+  //
+  // Held as *which scope* was hydrated rather than a bare boolean. A boolean
+  // stays true for the one render between a household (or user) switch and the
+  // effect below noticing it, and in that render the stores mount against the
+  // new scope's still-empty cache: the dashboard reads a household with no
+  // accounts and no categories and sends an established user into setup.
+  // Comparing against the scope in force closes that render.
+  const [hydratedScope, setHydratedScope] = useState(remote ? NOT_HYDRATED : scope);
+  const hydrated = hydratedScope === scope;
   const [hydrationError, setHydrationError] = useState(null);
   const [syncState, setSyncState] = useState(remote ? SYNC_STATE.IDLE : SYNC_STATE.LOCAL);
 
@@ -251,7 +262,7 @@ export const SyncProvider = ({ children }) => {
       pendingDeletes.current.clear();
       known.current.clear();
       sentIvs.current.clear();
-      setHydrated(true);
+      setHydratedScope(scope);
       setHydrationError(null);
       setSyncState(SYNC_STATE.LOCAL);
       return undefined;
@@ -262,7 +273,7 @@ export const SyncProvider = ({ children }) => {
     const work = { householdId, generation };
     accountWork.current = work;
     pendingDeletes.current.clear();
-    setHydrated(false);
+    setHydratedScope(NOT_HYDRATED);
     setHydrationError(null);
 
     (async () => {
@@ -343,7 +354,7 @@ export const SyncProvider = ({ children }) => {
         }
       }
 
-      setHydrated(true);
+      setHydratedScope(scope);
 
       // The self-migration: at least one row came back plaintext, so the
       // account predates this file's encryption and needs every row

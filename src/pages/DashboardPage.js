@@ -20,6 +20,7 @@ import { useSchedules } from "../contexts/SchedulesContext";
 import { TRANSACTION_KINDS, useTransactions } from "../contexts/TransactionsContext";
 import useAccountBalances from "../hooks/useAccountBalances";
 import useDashboard from "../hooks/useDashboard";
+import useHouseholdInUse from "../hooks/useHouseholdInUse";
 import useNextPaycheck from "../hooks/useNextPaycheck";
 import useRecordCashback from "../hooks/useRecordCashback";
 import useUpcoming from "../hooks/useUpcoming";
@@ -89,6 +90,8 @@ export default function DashboardPage() {
   const [reconcilingId, setReconcilingId] = useState(null);
   const [payingOffId, setPayingOffId] = useState(null);
   const [showBudgetExplainer, setShowBudgetExplainer] = useState(shouldShowBudgetExplainer);
+  // An established household never sees the guide, whatever this browser remembers.
+  const householdInUse = useHouseholdInUse();
 
   function dismissBudgetExplainer() {
     setShowBudgetExplainer(false);
@@ -314,7 +317,7 @@ export default function DashboardPage() {
         </section>
       )}
 
-      {showBudgetExplainer && (
+      {showBudgetExplainer && !householdInUse && (
         <SetupGuideCallout
           targetId="dashboard-budget-summary"
           title="A quick guide to your budget"

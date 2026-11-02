@@ -140,12 +140,11 @@ const wrapper = ({ children }) => (
 /**
  * Mounts the real provider pair and waits for hydrate to finish.
  *
- * `hydrated` starts `true` on the very first render — `useState(!remote)` —
- * because `AuthProvider`'s own session check is still "checking" at that
- * point and `remote` reads false until it resolves. Waiting on `hydrated`
- * alone would race that: it is briefly true for the wrong reason before
- * `remote` flips true and the real fetch-gated hydrate runs. `remote` has to
- * be asserted too.
+ * `hydrated` is `true` on the very first render, because `AuthProvider`'s own
+ * session check is still "checking" at that point, `remote` reads false, and
+ * the local books need no fetch. Waiting on `hydrated` alone would stop there,
+ * before `remote` flips true and the real fetch-gated hydrate runs. `remote`
+ * has to be asserted too.
  */
 async function mountSync() {
   const view = renderHook(() => useSync(), { wrapper });
@@ -189,6 +188,46 @@ test("a failed upload completing after logout cannot recreate its outbox", async
 // ---------------------------------------------------------------------------
 // 1. The test the whole change exists to pass.
 // ---------------------------------------------------------------------------
+
+describe("switching scope", () => {
+  /**
+   * The render between the scope changing and the hydrate effect noticing.
+   * `hydrated` used to be a bare boolean left `true` by the previous scope, so
+   * in that render the stores mounted against the new household's still-empty
+   * cache — and the dashboard, seeing no accounts and no categories, sent an
+   * established household into setup.
+   */
+  test("never renders the books for a scope whose documents have not landed", async () => {
+    let land;
+    mockDb.from.mockReturnValue({
+      ...fromStub(),
+      select: () => ({ eq: () => new Promise((resolve) => (land = resolve)) }),
+    });
+    const seen = [];
+    function Probe() {
+      const sync = useSync();
+      seen.push({ remote: sync.remote, scope: getStorageScope() });
+      return <p>books</p>;
+    }
+
+    render(
+      <AuthProvider>
+        <SyncProvider>
+          <Probe />
+        </SyncProvider>
+      </AuthProvider>
+    );
+
+    // Signed in, fetch outstanding: the gate is up, and nothing rendered the
+    // books under the account's scope.
+    await screen.findByText(/Loading your books/);
+    expect(seen.some((render) => render.remote)).toBe(false);
+
+    await act(async () => land({ data: [], error: null }));
+    await screen.findByText("books");
+    expect(seen.filter((render) => render.remote).every((render) => render.scope === SCOPE)).toBe(true);
+  });
+});
 
 describe("what reaches the wire", () => {
   test("is an envelope and never a document", async () => {
