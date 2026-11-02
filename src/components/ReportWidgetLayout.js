@@ -9,6 +9,7 @@ const DEFAULT_WIDGETS = [
   { id: "calendar", label: "Cashflow calendar & runway", visible: true, width: "full" },
   { id: "scheduled", label: "Scheduled and other spending", visible: true, width: "half" },
   { id: "month", label: "Month by month", visible: true, width: "full", height: "md" },
+  { id: "heatmap", label: "Spending by day", visible: true, width: "full" },
   { id: "savings-rate", label: "Savings rate trend", visible: true, width: "half", height: "sm" },
   { id: "income", label: "Income by source", visible: true, width: "half" },
   { id: "flows", label: "Where it came from, where it went", visible: true, width: "full" },

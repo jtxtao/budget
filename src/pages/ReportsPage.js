@@ -15,6 +15,7 @@ import ReportWidgetLayout, { CHART_HEIGHTS, useWidgetConfig } from "../component
 import SegmentedControl from "../components/SegmentedControl";
 import SpendingByCategoryTable from "../components/SpendingByCategoryTable";
 import SpendingDonutChart from "../components/SpendingDonutChart";
+import SpendingHeatmap from "../components/SpendingHeatmap";
 import { useAccounts } from "../contexts/AccountsContext";
 import { useHousehold } from "../contexts/HouseholdContext";
 import { usePayees } from "../contexts/PayeesContext";
@@ -467,6 +468,12 @@ export default function ReportsPage() {
                 </table>
               </div>
             </details>
+          </section>
+
+          {/* The time axis one step finer than the chart above: when inside
+              each month the money went, which no monthly total can show. */}
+          <section data-widget-id="heatmap" className="overflow-hidden rounded-2xl border border-edge bg-panel">
+            <SpendingHeatmap report={report} payeeName={payeeName} />
           </section>
 
           <section data-widget-id="savings-rate" className="overflow-hidden rounded-2xl border border-edge bg-panel">

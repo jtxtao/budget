@@ -589,3 +589,42 @@ describe("the drill-in's trend line", () => {
     expect(screen.queryByText("3-month average")).not.toBeInTheDocument();
   });
 });
+
+describe("spending by day", () => {
+  const LAST = monthsBack(1);
+  const setup = () =>
+    seed({
+      budgets: [
+        { id: "b1", name: "Groceries", groupId: null, plannedCents: 0, goalCents: null, bucket: null },
+      ],
+      payees: [{ id: "p1", name: "Corner Market" }],
+      transactions: [
+        { ...out(LAST, 4200, "b1"), date: `${LAST}-10`, payeeId: "p1" },
+        { ...out(LAST, 800, "b1"), date: `${LAST}-10`, description: "Coffee" },
+        { ...out(LAST, 15000, "b1"), date: `${LAST}-20` },
+      ],
+    });
+
+  test("each day the books reach is a cell naming what was spent on it", () => {
+    setup();
+    renderPage();
+
+    expect(screen.getByRole("heading", { name: "Spending by day" })).toBeInTheDocument();
+    const month = screen.getByRole("group", { name: formatPeriod(LAST) });
+    expect(within(month).getByRole("button", { name: /: \$50 spent$/ })).toBeInTheDocument();
+    expect(within(month).getByRole("button", { name: /: \$150 spent$/ })).toBeInTheDocument();
+    // A quiet day is drawn, and is not something to open.
+    expect(within(month).getAllByRole("button", { name: /nothing spent$/ })[0]).toBeDisabled();
+    expect(screen.getByText("Biggest day")).toBeInTheDocument();
+  });
+
+  test("opening a day lists what was bought on it", () => {
+    setup();
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /: \$50 spent$/ }));
+    expect(screen.getByText("Corner Market")).toBeInTheDocument();
+    expect(screen.getByText("Coffee")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /: \$50 spent$/ })).toHaveAttribute("aria-pressed", "true");
+  });
+});

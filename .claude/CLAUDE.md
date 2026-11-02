@@ -69,7 +69,7 @@ Stated once here. Where a rule in a companion doc names one of these, this is it
 | `/net-worth` | Hero figure and band split, stacked chart + table twin, holdings by band, settling a statement, the monthly pass |
 | `/loans` | Per-loan cards and totals, the hero and four tiles, balance-over-time chart, pay-it-off-faster with a sensitivity table, the mortgage/car panel, the full schedule (closed, at the foot) |
 | `/retirement` | The outlook, year-by-year chart + table twin, net worth by age, the account picker, assumptions, scenarios |
-| `/reports` | The window, headline figures, bucket split, cashflow chart, where-it-went flow diagram, plan-vs-actual chart, spending by category ranked, per-category drill-in |
+| `/reports` | The window, headline figures, bucket split, cashflow chart, spending-by-day heat map calendar, where-it-went flow diagram, plan-vs-actual chart, spending by category ranked, per-category drill-in |
 | `/donations` | A year of giving: given against claimable, the year's gifts, the goal, the organizations |
 | `/savings-goals` | Goals with target, what is saved (assigned plus any off-budget holding), what has been spent from them, remaining, this period's contribution; spending a goal into a category; closing one out into the archived list; read-only to-be-assigned above |
 | `/rewards` | Card offers and credits, which card to reach for, each card's fee against what it earns, then points/miles: value per point, catalog vs the household's own, planned trips |

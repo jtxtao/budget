@@ -894,3 +894,67 @@ describe("a receipt divided between categories", () => {
     expect(share("fun").netSpentCents).toBe(3000);
   });
 });
+
+describe("spending by day", () => {
+  test("a day carries what was spent and refunded on it, and a split receipt counts once per part", () => {
+    seed({
+      budgets: [budget("b1", "Groceries"), budget("b2", "Home")],
+      transactions: [
+        out("2026-08-03", 4000, "b1"),
+        out("2026-08-03", 1500, "b2"),
+        inn("2026-08-03", 500, "b1"),
+        {
+          ...out("2026-08-10", 12400, null),
+          splits: [
+            { budgetId: "b1", amountCents: 10000 },
+            { budgetId: "b2", amountCents: 2400 },
+          ],
+        },
+      ],
+    });
+    const report = read("1m");
+
+    expect(report.days.map((day) => day.date)).toEqual(["2026-08-03", "2026-08-10"]);
+    expect(report.days[0]).toMatchObject({ spentCents: 5500, refundCents: 500, netSpentCents: 5000 });
+    expect(report.days[0].legs).toHaveLength(3);
+    expect(report.days[1].netSpentCents).toBe(12400);
+    expect(report.days[1].legs.map((leg) => leg.budgetId)).toEqual(["b1", "b2"]);
+  });
+
+  test("income makes no day, and neither does a record outside the window or without a date", () => {
+    seed({
+      budgets: [budget("b1", "Groceries")],
+      transactions: [
+        inn("2026-08-01", 500000),
+        out("2026-07-31", 900, "b1"),
+        out("2026-09-01", 900, "b1"),
+        out(null, 900, "b1"),
+        out("2026-08-15", 2000, "b1"),
+      ],
+    });
+
+    expect(read("1m").days.map((day) => day.date)).toEqual(["2026-08-15"]);
+  });
+
+  test("a month's days add up to that month's spending", () => {
+    seed({
+      budgets: [budget("b1", "Groceries"), budget("b2", "Home")],
+      transactions: [
+        out("2026-06-02", 3000, "b1"),
+        out("2026-06-20", 7000, "b2"),
+        inn("2026-06-21", 1000, "b2"),
+        out("2026-07-04", 2500, "b1"),
+        inn("2026-07-05", 300000),
+        out("2026-08-30", 1234, "b2"),
+      ],
+    });
+    const report = read("3m");
+
+    for (const month of report.series) {
+      const fromDays = report.days
+        .filter((day) => toPeriod(day.date) === month.period)
+        .reduce((sum, day) => sum + day.netSpentCents, 0);
+      expect(fromDays).toBe(month.netSpentCents);
+    }
+  });
+});

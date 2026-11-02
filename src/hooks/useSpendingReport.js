@@ -402,6 +402,13 @@ export default function useSpendingReport(
     // drill-in's rows are: a name is not money, and the page resolves it. A
     // record naming nobody keys on null and is still income.
     const incomeByPayee = new Map();
+    // Spending by calendar day — the heat map's cells and the day it opens.
+    // Filled in the same branch that adds to each month's `spentCents` and
+    // `refundCents`, so a month's days add up to the month by construction
+    // rather than by a second walk that could read the refund rule differently.
+    // Income is not here: a payday is not a day the household spent anything,
+    // and a cell that lit up for it would be read as one.
+    const byDay = new Map();
 
     for (const transaction of transactions) {
       // A transfer the budget never sees is in no report either — it is money the
@@ -465,6 +472,22 @@ export default function useSpendingReport(
         month[scheduleField] += amountCents;
         entry[field] += amountCents;
         entry.months.add(period);
+
+        let day = byDay.get(transaction.date);
+        if (!day) {
+          day = { date: transaction.date, spentCents: 0, refundCents: 0, legs: [] };
+          byDay.set(transaction.date, day);
+        }
+        day[field] += amountCents;
+        day.legs.push({
+          id: transaction.id,
+          budgetId,
+          // The reference, never the name, for the drill-in's reason below.
+          payeeId: transaction.payeeId,
+          description: transaction.description,
+          amountCents,
+          kind: leg.kind,
+        });
 
         // The month's own bucket split, signed the way `netSpentCents` is: a
         // refund comes back off the bucket it was filed under rather than
@@ -727,6 +750,14 @@ export default function useSpendingReport(
       undatedCount,
       undatedSpentCents,
       undatedIncomeCents,
+
+      // Every day in the window that spending or a refund touched, oldest
+      // first. A day with nothing against it is not an entry — the calendar
+      // draws it empty — and income never makes one. Each day's net adds up to
+      // its month's `netSpentCents` across the month's days.
+      days: [...byDay.values()]
+        .map((day) => ({ ...day, netSpentCents: day.spentCents - day.refundCents }))
+        .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)),
 
       hasLedger: transactions.length > 0,
       firstPeriod,
