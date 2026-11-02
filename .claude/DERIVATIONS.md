@@ -56,7 +56,9 @@ remaining(g) = max(0, target − saved)
 
 **Both halves are reported and only `savedCents` adds them**, because a goal can hold both at once and the household is the only thing that can move one into the other: sweeping assigned money into the holding is a transfer out of the budget, which comes out of a *category* no goal may read, so a contribution left assigned afterwards sits in both piles. The row states the two apart — the holding under the goal's name, the assignment under the headline figure — so that is visible rather than silent. **Reported, never repaired**, `driftCents`' stance.
 
-`remainingCents` is `target − saved` **floored at zero**, so a goal met — or overshot, by a withdrawal that has not happened yet — never reads as owing money back.
+`remainingCents` is `target − saved − spent` **floored at zero**, so a goal met — or overshot, by a withdrawal that has not happened yet — never reads as owing money back.
+
+**`spentCents` is the sum of the goal's `spending` statements, and it counts towards the target** — money spent out of the goal was saved first, so paying the venue leaves the wedding exactly as far along. It is read off the goal record and is on **neither side of the identity**: the money it describes moved out of `availableCents` into a category, where it is that category's activity like any other purchase. Fold it into `goalRows` and every paid bill reads twice. Spending is a move (`useGoalSpending`): goal −X and category +X in the payment's month, so the pool does not move. `spendableFromGoal` caps it at the least the goal holds from that month onward, since a backdated release lowers every later month too. Closing a goal out releases what is left to the pool in the current month and unfunds any month ahead, because an archived goal is off every form that could reach that money.
 
 ## Account balances (`src/hooks/useAccountBalances.js`)
 

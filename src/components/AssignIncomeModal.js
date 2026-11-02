@@ -65,7 +65,9 @@ export default function AssignIncomeModal({
   const { assignments, setPeriodAssignments } = useAssignments();
   const { setPeriodAssignments: setGoalPeriodAssignments } = useSavingsGoalAssignments();
   const { rows, toBeAssignedCents, assignedAheadCents, monthsFundedAhead } = useEnvelopes(month);
-  const goalRows = useSavingsGoalEnvelopes(month);
+  // A closed-out goal takes no more money: it is history, not a place to file
+  // a dollar. Its assignments still count in the pool through useEnvelopes.
+  const goalRows = useSavingsGoalEnvelopes(month).filter((row) => !row.archivedOn);
   // Onboarding's starting-balance flow reuses this same form but is not
   // funded from this month's ordinary pool — see `useStartingBalances`. The
   // month is part of what that override *means* (a period before the books

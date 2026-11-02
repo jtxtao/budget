@@ -3,7 +3,7 @@ import { v4 as uuidV4 } from "uuid";
 import useSyncedState from "../hooks/useSyncedState";
 import { reorderSubset } from "../domain/reorder";
 import { useSavingsGoalAssignments } from "./SavingsGoalAssignmentsContext";
-import { toCents } from "../utils";
+import { todayISO, toCents } from "../utils";
 
 /**
  * Medium-term savings: a camera, a wedding, a special event — a goal that is
@@ -32,6 +32,20 @@ import { toCents } from "../utils";
  *
  * It still holds no money and names no figure of its own: what an account is
  * worth is `useNetWorth`'s answer, joined to the goal one level up.
+ *
+ * **`spending` is what has already been spent towards the goal** — the venue,
+ * the photographer, the dress, each `{ id, date, amountCents, budgetId, note,
+ * transactionId }`. A statement, not money: the money itself moved out of the
+ * goal and into `budgetId` as an ordinary assignment, and the purchase is an
+ * ordinary outflow against that category (`useGoalSpending` makes all three
+ * writes). This list only remembers that the move was *spending towards this
+ * goal* rather than a pull-back, so the goal can report planned, saved and spent
+ * apart. No envelope or balance sum reads it. `budgetId` and `transactionId`
+ * are inert but kept.
+ *
+ * **`archivedOn` closes a goal out** (`"YYYY-MM-DD"`, or null for a live one).
+ * An archived goal keeps its record, its spending and its assignments; it only
+ * leaves the active list and the funding form.
  */
 const SavingsGoalsContext = React.createContext();
 
@@ -83,6 +97,21 @@ function parseGoalFields({ name, target, targetCents, targetDate, budgetId, phot
 function readAccountIds(value) {
   if (!Array.isArray(value)) return null;
   return [...new Set(value.filter((id) => typeof id === "string"))];
+}
+
+/** Only well-formed spending entries survive a read of storage. */
+function readSpending(stored) {
+  if (!Array.isArray(stored)) return [];
+  return stored
+    .filter((entry) => entry && isAmount(entry.amountCents) && isDate(entry.date))
+    .map((entry) => ({
+      id: typeof entry.id === "string" ? entry.id : uuidV4(),
+      date: entry.date,
+      amountCents: entry.amountCents,
+      budgetId: typeof entry.budgetId === "string" ? entry.budgetId : null,
+      note: typeof entry.note === "string" ? entry.note : "",
+      transactionId: typeof entry.transactionId === "string" ? entry.transactionId : null,
+    }));
 }
 
 const AMOUNT_ERROR =
@@ -157,6 +186,10 @@ function migrateGoals(stored) {
       photo: typeof goal.photo === "string" && goal.photo.startsWith("data:image/") && goal.photo.length <= 180_000 ? goal.photo : null,
       link: typeof goal.link === "string" && /^https?:\/\//i.test(goal.link) ? goal.link : null,
       envelopeColor: ENVELOPE_COLORS.includes(goal.envelopeColor) ? goal.envelopeColor : ENVELOPE_COLORS[0],
+      // Purely additive: a goal saved before either existed had spent nothing
+      // through the app and was never closed out.
+      spending: readSpending(goal.spending),
+      archivedOn: isDate(goal.archivedOn) ? goal.archivedOn : null,
     }));
 }
 
@@ -193,6 +226,8 @@ export const SavingsGoalsProvider = ({ children }) => {
           accountIds: [],
           accountAmounts: {},
           ...holdings.patch,
+          spending: [],
+          archivedOn: null,
         },
       ]);
       return { ok: true, id };
@@ -254,6 +289,76 @@ export const SavingsGoalsProvider = ({ children }) => {
   );
 
   /**
+   * Remember that money moved out of a goal was spent towards it. The move and
+   * the purchase are other stores' writes (`useGoalSpending`); this is only
+   * the statement, so it checks only its own fields.
+   */
+  const recordGoalSpending = useCallback(
+    ({ goalId, date, amountCents, budgetId, note, transactionId }) => {
+      if (!goals.some((goal) => goal.id === goalId)) {
+        return { ok: false, error: "That savings goal no longer exists." };
+      }
+      if (!isAmount(amountCents)) return { ok: false, error: "Enter an amount greater than zero." };
+      if (!isDate(date)) return { ok: false, error: "Enter a valid date." };
+
+      const entry = {
+        id: uuidV4(),
+        date,
+        amountCents,
+        budgetId: typeof budgetId === "string" && budgetId ? budgetId : null,
+        note: (note ?? "").trim(),
+        transactionId: typeof transactionId === "string" && transactionId ? transactionId : null,
+      };
+      setGoals((previous) =>
+        previous.map((goal) =>
+          goal.id === goalId ? { ...goal, spending: [...(goal.spending ?? []), entry] } : goal
+        )
+      );
+      return { ok: true, id: entry.id };
+    },
+    [goals, setGoals]
+  );
+
+  /** Forget one spending entry. Undoing the move it describes is the caller's. */
+  const removeGoalSpending = useCallback(
+    ({ goalId, spendingId }) => {
+      const goal = goals.find((entry) => entry.id === goalId);
+      if (!goal || !(goal.spending ?? []).some((entry) => entry.id === spendingId)) {
+        return { ok: false, error: "That spending entry no longer exists." };
+      }
+      setGoals((previous) =>
+        previous.map((entry) =>
+          entry.id === goalId
+            ? { ...entry, spending: entry.spending.filter((spent) => spent.id !== spendingId) }
+            : entry
+        )
+      );
+      return { ok: true };
+    },
+    [goals, setGoals]
+  );
+
+  /**
+   * Close a goal out, or reopen it. Nothing is deleted either way: the goal's
+   * spending and its assignments stay, so a reopened goal reads exactly as it
+   * did. Releasing money still left in it is `useGoalSpending`'s, since that is
+   * an assignment.
+   */
+  const setGoalArchived = useCallback(
+    ({ id, archived, date = todayISO() }) => {
+      if (!goals.some((goal) => goal.id === id)) {
+        return { ok: false, error: "That savings goal no longer exists." };
+      }
+      if (archived && !isDate(date)) return { ok: false, error: "Enter a valid date." };
+      setGoals((previous) =>
+        previous.map((goal) => (goal.id === id ? { ...goal, archivedOn: archived ? date : null } : goal))
+      );
+      return { ok: true };
+    },
+    [goals, setGoals]
+  );
+
+  /**
    * A new order for some of the goals, from a drag: the ids named take turns
    * in the places they already held, and nothing else moves (`reorderSubset`).
    * Array order is display order, so this is the whole of it.
@@ -269,8 +374,26 @@ export const SavingsGoalsProvider = ({ children }) => {
   // Memoised so a change in any other store does not re-render every
   // consumer of this one.
   const value = useMemo(
-    () => ({ goals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal, reorderSavingsGoals }),
-    [goals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal, reorderSavingsGoals]
+    () => ({
+      goals,
+      addSavingsGoal,
+      updateSavingsGoal,
+      deleteSavingsGoal,
+      reorderSavingsGoals,
+      recordGoalSpending,
+      removeGoalSpending,
+      setGoalArchived,
+    }),
+    [
+      goals,
+      addSavingsGoal,
+      updateSavingsGoal,
+      deleteSavingsGoal,
+      reorderSavingsGoals,
+      recordGoalSpending,
+      removeGoalSpending,
+      setGoalArchived,
+    ]
   );
 
   return <SavingsGoalsContext.Provider value={value}>{children}</SavingsGoalsContext.Provider>;

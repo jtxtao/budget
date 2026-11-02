@@ -310,6 +310,10 @@ Both are **inert but kept**: this store reads no other, so neither is checked ag
 
 ### The rest
 
+**Spending a goal is a move, never a figure the goal holds.** `spending` is a list of `{ id, date, amountCents, budgetId, note, transactionId }`, one per payment made out of the goal — the venue, then the photographer. **It holds no money**: the money itself left the goal as a negative goal assignment and arrived in `budgetId` as a positive one, in the payment's month, and the purchase is an ordinary outflow against that category (`useGoalSpending` makes all of those writes; this store keeps only the statement). It exists so a goal paid off in pieces can say planned, saved and spent apart — a pull-back with a minus and a payment both lower the assignment, and only this list tells them apart. `budgetId` and `transactionId` are **inert but kept**. `recordGoalSpending` checks only its own fields; `removeGoalSpending` drops the statement and leaves undoing the move to its caller.
+
+**`archivedOn`** (`"YYYY-MM-DD"` or null) closes a goal out without deleting anything: its record, spending and assignments all stay, and `setGoalArchived` reopens it as it was. An archived goal is off the active list and off `AssignIncomeModal`. Releasing what is left in it is an assignment, so it is `useGoalSpending.archiveGoal`'s, not this store's. Both fields are stamped on by the migration — `[]` and `null`, which is what a goal saved before them had done.
+
 **`budgetId`** is nullable and **inert but kept**: a goal may name the budget category its monthly contributions draw from, purely for display. Nothing cascades — a deleted category's id contributes nothing and is resolved where it is read in `useSavingsGoalEnvelopes`.
 
 A goal names **no transaction**, so nothing outside this pair deletes into or out of it — and the accounts and category it names are references it never reads back, the rule that keeps the dependency graph one-way. `updateSavingsGoal` refuses an id it cannot find rather than letting a `map` that matches nothing report the write as landed, because `useSyncedState` syncs a delete from another tab — or from another device — and the edit modal can be open on a record the store no longer has.
@@ -336,7 +340,7 @@ A goal names **no transaction**, so nothing outside this pair deletes into or ou
 
 ## Mutators that can reject input
 
-`addBudget`, `addTransaction`, `updateTransaction`, `addAccount`, `updateAccount`, `reconcileAccount`, `setAssignedAmount`, `setPeriodAssignments`, `moveBetweenBudgets`, `setBalance`, `setPeriodBalances`, `setBalanceHistory`, `setPaySchedule`, `setRetirementPlan`, `setEmergencyFund`, `addRecipient`, `updateRecipient`, `recordDonation`, `updateDonation`, `setGivingGoal`, `addSavingsGoal`, `updateSavingsGoal`, the savings-goal `setAssignedAmount` / `setPeriodAssignments`, and `addLoan`, `updateLoan`, `setLoanWhatIf` — all return `{ ok, error }`.
+`addBudget`, `addTransaction`, `updateTransaction`, `addAccount`, `updateAccount`, `reconcileAccount`, `setAssignedAmount`, `setPeriodAssignments`, `moveBetweenBudgets`, `setBalance`, `setPeriodBalances`, `setBalanceHistory`, `setPaySchedule`, `setRetirementPlan`, `setEmergencyFund`, `addRecipient`, `updateRecipient`, `recordDonation`, `updateDonation`, `setGivingGoal`, `addSavingsGoal`, `updateSavingsGoal`, `recordGoalSpending`, `removeGoalSpending`, `setGoalArchived`, the savings-goal `setAssignedAmount` / `setPeriodAssignments`, and `addLoan`, `updateLoan`, `setLoanWhatIf` — all return `{ ok, error }`.
 
 `deleteSavingsGoal` is the exception in that pair and deliberately so: a goal holds no money and nothing else names its id, so there is nothing a delete could be refused for. `deleteLoan` is the same — a loan holds no money and nothing references its id.
 
