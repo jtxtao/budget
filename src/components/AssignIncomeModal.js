@@ -5,6 +5,8 @@ import PeriodStepper from "./PeriodStepper";
 import useEnvelopes from "../hooks/useEnvelopes";
 import useSavingsGoalEnvelopes from "../hooks/useSavingsGoalEnvelopes";
 import { useAssignments } from "../contexts/AssignmentsContext";
+import { useBudgets } from "../contexts/BudgetsContext";
+import { suggestedFunding } from "../domain/fundingTargets";
 import { useSavingsGoalAssignments } from "../contexts/SavingsGoalAssignmentsContext";
 import {
   addMonths,
@@ -63,6 +65,7 @@ export default function AssignIncomeModal({
   const [month, setMonth] = useState(period);
 
   const { assignments, setPeriodAssignments } = useAssignments();
+  const { budgets } = useBudgets();
   const { setPeriodAssignments: setGoalPeriodAssignments } = useSavingsGoalAssignments();
   const { rows, toBeAssignedCents, assignedAheadCents, monthsFundedAhead } = useEnvelopes(month);
   const goalRows = useSavingsGoalEnvelopes(month);
@@ -177,6 +180,18 @@ export default function AssignIncomeModal({
   function handleFillAll() {
     for (const row of editable) {
       if (row.plannedCents > 0) setRowValue(row.budgetId, row.plannedCents);
+    }
+    recompute();
+  }
+
+  function handleSuggestFunding() {
+    const targets = new Map(budgets.map((budget) => [budget.id, budget]));
+    let remaining = Math.max(0, poolCents + editable.reduce((sum, row) => sum + row.assignedCents, 0));
+    for (const row of editable) {
+      const wanted = suggestedFunding(row, targets.get(row.budgetId), month);
+      const amount = Math.min(remaining, Math.max(0, wanted));
+      setRowValue(row.budgetId, amount);
+      remaining -= amount;
     }
     recompute();
   }
@@ -314,6 +329,9 @@ export default function AssignIncomeModal({
           </div>
           <Button variant="outline" size="sm" type="button" onClick={handleFillAll}>
             Fill all to estimate
+          </Button>
+          <Button variant="outline" size="sm" type="button" onClick={handleSuggestFunding}>
+            Suggest funding
           </Button>
         </div>
 
