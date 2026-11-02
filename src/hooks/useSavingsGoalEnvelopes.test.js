@@ -282,6 +282,9 @@ describe("what is stored", () => {
       budgetId: null,
       photo: null,
       envelopeColor: "canopy",
+      link: null,
+      spending: [],
+      archivedOn: null,
       accountIds: [],
       accountAmounts: {},
     });
@@ -325,6 +328,9 @@ describe("what is stored", () => {
       budgetId: null,
       photo: null,
       envelopeColor: "canopy",
+      link: null,
+      spending: [],
+      archivedOn: null,
       accountIds: ["acc-brk"],
       accountAmounts: { "acc-brk": 750000 },
     });
@@ -375,6 +381,9 @@ describe("what is stored", () => {
       budgetId: null,
       photo: null,
       envelopeColor: "canopy",
+      link: null,
+      spending: [],
+      archivedOn: null,
       accountIds: [],
       accountAmounts: {},
     });

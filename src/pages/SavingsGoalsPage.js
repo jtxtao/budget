@@ -1,5 +1,8 @@
 import { useState } from "react";
 import AddSavingsGoalModal from "../components/AddSavingsGoalModal";
+import ArchivedGoalList from "../components/ArchivedGoalList";
+import CloseOutGoalModal from "../components/CloseOutGoalModal";
+import SpendFromGoalModal from "../components/SpendFromGoalModal";
 import Button from "../components/Button";
 import PageHeader from "../components/PageHeader";
 import SavingsGoalList from "../components/SavingsGoalList";
@@ -7,6 +10,7 @@ import SetupGuideCallout from "../components/SetupGuideCallout";
 import { useSavingsGoalAssignments } from "../contexts/SavingsGoalAssignmentsContext";
 import { useSavingsGoals } from "../contexts/SavingsGoalsContext";
 import useEnvelopes from "../hooks/useEnvelopes";
+import useGoalSpending from "../hooks/useGoalSpending";
 import useSavingsGoalEnvelopes from "../hooks/useSavingsGoalEnvelopes";
 import { currentPeriod, formatCents } from "../utils";
 
@@ -49,7 +53,15 @@ export default function SavingsGoalsPage() {
   const { toBeAssignedCents } = useEnvelopes(period);
   const { setAssignedAmount } = useSavingsGoalAssignments();
   const { goals, deleteSavingsGoal, reorderSavingsGoals } = useSavingsGoals();
-  const rows = useSavingsGoalEnvelopes(period);
+  const allRows = useSavingsGoalEnvelopes(period);
+  const rows = allRows.filter((row) => !row.archivedOn);
+  const archivedRows = allRows.filter((row) => row.archivedOn);
+  const { undoGoalSpending, restoreGoal } = useGoalSpending();
+  // Ids rather than rows, so an open form reads the goal's current figures.
+  const [spendingId, setSpendingId] = useState(null);
+  const [closingId, setClosingId] = useState(null);
+  const spendingRow = rows.find((row) => row.goalId === spendingId) ?? null;
+  const closingRow = rows.find((row) => row.goalId === closingId) ?? null;
 
   function dismissAddExplainer() {
     setShowAddExplainer(false);
@@ -78,6 +90,10 @@ export default function SavingsGoalsPage() {
 
   function handleDelete(row) {
     deleteSavingsGoal({ id: row.goalId });
+  }
+
+  function handleUndoSpending(row, entry) {
+    return undoGoalSpending({ goalId: row.goalId, spendingId: entry.id });
   }
 
   return (
@@ -110,6 +126,15 @@ export default function SavingsGoalsPage() {
           onEdit={handleEdit}
           onDelete={handleDelete}
           onReorder={reorderSavingsGoals}
+          onSpend={(row) => setSpendingId(row.goalId)}
+          onArchive={(row) => setClosingId(row.goalId)}
+          onUndoSpending={handleUndoSpending}
+        />
+
+        <ArchivedGoalList
+          rows={archivedRows}
+          onRestore={(row) => restoreGoal({ goalId: row.goalId })}
+          onDelete={handleDelete}
         />
       </div>
 
@@ -133,6 +158,18 @@ export default function SavingsGoalsPage() {
           </button>
         </SetupGuideCallout>
       )}
+
+      <SpendFromGoalModal
+        show={spendingRow != null}
+        row={spendingRow}
+        handleClose={() => setSpendingId(null)}
+      />
+
+      <CloseOutGoalModal
+        show={closingRow != null}
+        row={closingRow}
+        handleClose={() => setClosingId(null)}
+      />
 
       <AddSavingsGoalModal
         show={showModal}

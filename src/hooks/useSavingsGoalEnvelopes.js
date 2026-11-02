@@ -61,8 +61,16 @@ export function useHoldingOptions(period) {
  * available(g) = Σ assigned(g, p ≤ P)            ← out of the pool
  * held(g)      = Σ counted over the goal's off-budget accounts
  * saved(g)     = available + held
- * remaining(g) = max(0, target − saved)
+ * spent(g)     = Σ the goal's spending entries        ← a statement, never a sum the books read
+ * remaining(g) = max(0, target − saved − spent)
  * ```
+ *
+ * **Spent counts towards the target** because it was saved first: a wedding
+ * planned at $30,000 with $8,000 already paid to the venue out of the goal is
+ * $8,000 nearer, not $8,000 further away. Spending moves the money from
+ * `availableCents` to `spentCents`, so progress does not drop when a bill is
+ * paid. `spentCents` is read off the goal record and is on neither side of the
+ * envelope identity — the money it describes is a category's activity now.
  *
  * **`availableCents` is the goal's cumulative assignment and nothing else**
  * (see useEnvelopes' goalRows), which is what makes the envelope identity's goal
@@ -116,6 +124,8 @@ export default function useSavingsGoalEnvelopes(period) {
 
       const heldCents = goalHoldings.reduce((sum, held) => sum + held.countedCents, 0);
       const savedCents = row.availableCents + heldCents;
+      const spending = goal.spending ?? [];
+      const spentCents = spending.reduce((sum, entry) => sum + entry.amountCents, 0);
 
       // Inert but kept: a deleted or unknown category resolves to null here.
       const categoryName = goal.budgetId ? (budgetById.get(goal.budgetId)?.name ?? null) : null;
@@ -135,7 +145,14 @@ export default function useSavingsGoalEnvelopes(period) {
         heldCents,
         holdings: goalHoldings,
         savedCents,
-        remainingCents: Math.max(goal.targetCents - savedCents, 0),
+        spentCents,
+        spending: spending.map((entry) => ({
+          ...entry,
+          categoryName: entry.budgetId ? (budgetById.get(entry.budgetId)?.name ?? null) : null,
+        })),
+        budgetId: goal.budgetId ?? null,
+        archivedOn: goal.archivedOn ?? null,
+        remainingCents: Math.max(goal.targetCents - savedCents - spentCents, 0),
       };
     });
   }, [goals, budgets, goalRows, holdings]);
