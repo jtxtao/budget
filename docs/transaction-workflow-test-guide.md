@@ -1,6 +1,6 @@
 # Transaction workflow changes: review and test guide
 
-This guide covers the transaction rules, category funding targets, and transaction review controls added in November 2026. These changes are in the working tree; they are not a release or a deployment.
+This guide covers the transaction rules, category funding targets, and transaction search/filter controls added in November 2026. These changes are in the working tree; they are not a release or a deployment.
 
 ## Start a safe test session
 
@@ -24,14 +24,7 @@ The desktop app uses the same features. Run `npm run desktop` with the developme
 5. Add an outflow whose description does not contain `Market`. Its category should stay as entered.
 6. In Settings, disable the rule, then add another matching outflow. It should stay as entered. Enable the rule and try again.
 
-You can also match a payee or account. All stated conditions in one rule must match. Enabled rules run in displayed order; if more than one sets the same field, the later rule wins. A **Set note** action replaces the transaction description. Rules do not run on transfers. Editing or disabling a rule does not automatically rewrite existing transactions.
-
-### Test existing transactions
-
-1. Create a transaction before creating its matching rule.
-2. Create the rule in Settings.
-3. On Transactions, select that transaction in **Review transactions** and click **Apply rules**.
-4. Confirm the changed category or note in the register. Test a nonmatching transaction as well; it should not change.
+You can also match a payee or account. All stated conditions in one rule must match. Enabled rules run in displayed order; if more than one sets the same field, the later rule wins. A **Set note** action replaces the transaction description. Rules do not run on transfers. Rules run as a transaction is entered; editing or disabling a rule does not rewrite transactions already in the register.
 
 ## 2. Funding targets and suggestions
 
@@ -52,20 +45,18 @@ You can also match a payee or account. All stated conditions in one rule must ma
 
 If the pool has less money than the targets request, later categories may receive less or zero. The button does not fund savings-goal rows; those remain editable separately in the same form.
 
-## 3. Faster transaction review
+## 3. Searching and filtering the register
 
-**Where:** Transactions → filters and Review transactions.
+**Where:** Transactions → filters.
 
-### Test search and the queue
+### Test search and filters
 
-1. Add a new transaction. New transactions start in **Needs review**; transactions created before this change are treated as already reviewed.
-2. Select **All dates** if the transaction is outside the displayed month. Search for a word in its payee or note. The register and selection list should narrow together.
-3. Tick **Needs review**. The new transaction should appear; older transactions without a review flag should not.
-4. Select the transaction and click **Mark reviewed**. It should leave the queue. Untick Needs review, select it again, and click **Needs review** to put it back.
-5. Select several visible transactions. Try **Set category** and verify their categories in the register. Try **Apply rules** after creating a matching rule.
-6. Use **Clear filters** to reset search, Needs review, account, and category filters. The month/all-dates choice remains separate.
+1. Add a few transactions across different months, accounts, and categories.
+2. Select **All dates** if a transaction is outside the displayed month. Search for a word in its payee or note. The register should narrow to matching rows.
+3. Pick an **Account** and a **Category**; the filters combine, and the month/all-dates choice remains separate.
+4. Use **Clear filters** to reset search, account, and category filters.
 
-The review list selects rows shown by the current date, account, category, search, and review filters. **Select visible** acts on those rows. Bulk category changes remove any existing split on the selected transactions, so inspect split transactions before using that action.
+A category filter reads split parts, refunds, and the effective category of a crossing transfer, so a row shows whenever any part of it belongs to the chosen category.
 
 ## What changed in code
 

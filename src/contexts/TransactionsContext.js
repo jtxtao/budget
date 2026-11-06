@@ -379,7 +379,6 @@ function migrateTransactions(stored) {
         // such a record does hold stays where it is as its note.
         payeeId: transaction.payeeId ?? null,
         description: transaction.description ?? "",
-        ...(transaction.reviewed === false ? { reviewed: false } : {}),
         amountCents,
         date: transaction.date ?? null,
         accountId: transaction.accountId ?? null,
@@ -563,21 +562,6 @@ export const TransactionsProvider = ({ children }) => {
   }, [setRules]);
   const deleteRule = useCallback((id) => setRules((previous) => previous.filter((rule) => rule.id !== id)), [setRules]);
 
-  const updateTransactionsBulk = useCallback(({ ids, patch, applyRules = false }) => {
-    const selected = new Set(ids);
-    const replacements = new Map();
-    for (const current of transactions) {
-      if (!selected.has(current.id)) continue;
-      const next = applyRules ? applyTransactionRules(current, rules) : { ...current, ...patch };
-      const changed = Object.keys(next).filter((key) => next[key] !== current[key]);
-      const result = firstBroken(next, new Set(changed));
-      if (!result.ok) return result;
-      replacements.set(current.id, next);
-    }
-    setTransactions((previous) => previous.map((row) => replacements.get(row.id) ?? row));
-    return { ok: true, count: replacements.size };
-  }, [transactions, rules, setTransactions]);
-
   // The two literal kinds, and a transfer is in neither: it is money the household
   // moved rather than money it earned or spent, and what the *budget* makes of one
   // is `budgetLegs`'s answer rather than a list membership.
@@ -653,7 +637,6 @@ export const TransactionsProvider = ({ children }) => {
         // null.
         payeeId: payeeId || null,
         description: (description ?? "").trim(),
-        reviewed: false,
         amountCents: amountCents ?? toCents(amount),
         date,
         accountId: accountId || null,
@@ -722,7 +705,6 @@ export const TransactionsProvider = ({ children }) => {
       // which no record can have.
       if ("payeeId" in patch) changes.payeeId = patch.payeeId || null;
       if ("description" in patch) changes.description = (patch.description ?? "").trim();
-      if ("reviewed" in patch) changes.reviewed = patch.reviewed === true;
       if ("amountCents" in patch) changes.amountCents = patch.amountCents;
       else if ("amount" in patch) changes.amountCents = toCents(patch.amount);
       if ("date" in patch) changes.date = patch.date;
@@ -934,7 +916,6 @@ export const TransactionsProvider = ({ children }) => {
       rules,
       saveRule,
       deleteRule,
-      updateTransactionsBulk,
       inflows,
       outflows,
       getBudgetTransactions,
@@ -952,7 +933,6 @@ export const TransactionsProvider = ({ children }) => {
       rules,
       saveRule,
       deleteRule,
-      updateTransactionsBulk,
       inflows,
       outflows,
       getBudgetTransactions,
