@@ -49,6 +49,7 @@ function GoalProgressBar({ ratio, label }) {
 }
 
 export default function NetWorthAllocationPanel({
+  netCents = 0,
   retirementCents,
   retirementAccountCount,
   goals,
@@ -61,9 +62,17 @@ export default function NetWorthAllocationPanel({
 }) {
   const hasRetirement = retirementAccountCount > 0;
   const hasEmergency = emergencyTargetCents > 0 || emergencyHeldCents > 0;
-  const hasGoals = goals.length > 0;
+  const visibleGoals = goals.filter((g) => g.savedCents > 0);
+  const hasGoals = visibleGoals.length > 0;
   const hasAhead = assignedAheadCents > 0;
   const hasAnything = hasRetirement || hasEmergency || hasGoals || hasAhead;
+
+  const totalEarmarkedCents =
+    (hasRetirement ? retirementCents : 0) +
+    (hasEmergency ? emergencyHeldCents : 0) +
+    (hasAhead ? assignedAheadCents : 0) +
+    totalGoalSavedCents;
+  const unaccountedCents = netCents - totalEarmarkedCents;
 
   return (
     <section className="overflow-hidden rounded-2xl border border-edge bg-panel">
@@ -139,7 +148,7 @@ export default function NetWorthAllocationPanel({
             <div className="text-label uppercase text-chalk-soft">Savings goals</div>
             <div className="font-mono text-row font-medium text-chalk">
               {formatCents(totalGoalSavedCents)} saved across{" "}
-              {goals.length === 1 ? "1 goal" : `${goals.length} goals`}
+              {visibleGoals.length === 1 ? "1 goal" : `${visibleGoals.length} goals`}
             </div>
           </div>
 
@@ -153,7 +162,7 @@ export default function NetWorthAllocationPanel({
               </tr>
             </thead>
             <tbody>
-              {goals.map((row, i) => {
+              {visibleGoals.map((row, i) => {
                 const ratio =
                   row.targetCents > 0
                     ? (row.savedCents + row.spentCents) / row.targetCents
@@ -195,6 +204,32 @@ export default function NetWorthAllocationPanel({
             >
               Savings goals
             </Link>
+          </div>
+        </div>
+      )}
+
+      {hasAnything && netCents !== 0 && (
+        <div className="border-t border-edge px-4 py-4">
+          <div className="flex items-baseline justify-between gap-x-6">
+            <span className="font-sans text-row text-chalk-soft">Total earmarked</span>
+            <span className="font-mono text-row font-medium text-chalk">
+              {formatCents(totalEarmarkedCents)}
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline justify-between gap-x-6">
+            <span className="font-sans text-row text-chalk-soft">
+              {unaccountedCents >= 0 ? "Not yet earmarked" : "Items above may overlap"}
+            </span>
+            <span
+              className={`font-mono text-row font-medium ${
+                unaccountedCents < 0 ? "text-chalk-soft" : "text-chalk"
+              }`}
+            >
+              {formatCents(Math.abs(unaccountedCents))}{" "}
+              <span className="font-sans text-label font-normal text-chalk-soft">
+                of {formatCents(netCents)}
+              </span>
+            </span>
           </div>
         </div>
       )}

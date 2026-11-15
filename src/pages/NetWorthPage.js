@@ -227,6 +227,7 @@ export default function NetWorthPage() {
           />
 
           <NetWorthAllocationPanel
+            netCents={allocation.netCents}
             retirementCents={allocation.retirementCents}
             retirementAccountCount={allocation.retirementAccountCount}
             goals={allocation.goals}
