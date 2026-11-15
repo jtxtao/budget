@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import Button from "../components/Button";
 import FixDriftModal from "../components/FixDriftModal";
 import HoldingsTable from "../components/HoldingsTable";
+import NetWorthAllocationPanel from "../components/NetWorthAllocationPanel";
 import NetWorthChart from "../components/NetWorthChart";
 import NetWorthSummary from "../components/NetWorthSummary";
 import PageHeader from "../components/PageHeader";
@@ -11,6 +12,7 @@ import SegmentedControl from "../components/SegmentedControl";
 import UpdateBalancesModal from "../components/UpdateBalancesModal";
 import { useAccounts } from "../contexts/AccountsContext";
 import useNetWorth, { CHANGE_RANGES, DEFAULT_CHANGE_RANGE } from "../hooks/useNetWorth";
+import useNetWorthAllocation from "../hooks/useNetWorthAllocation";
 import { currentPeriod, formatCents, formatPeriod } from "../utils";
 
 /**
@@ -62,6 +64,7 @@ export default function NetWorthPage() {
     { spanKey }
   );
   const change = changes.find((entry) => entry.key === spanKey) ?? changes[0];
+  const allocation = useNetWorthAllocation(period);
 
   const hasAccounts = rows.length > 0;
 
@@ -221,6 +224,18 @@ export default function NetWorthPage() {
             period={period}
             onFixDrift={setSettling}
             onReorder={reorderAccounts}
+          />
+
+          <NetWorthAllocationPanel
+            retirementCents={allocation.retirementCents}
+            retirementAccountCount={allocation.retirementAccountCount}
+            goals={allocation.goals}
+            totalGoalSavedCents={allocation.totalGoalSavedCents}
+            emergencyHeldCents={allocation.emergencyHeldCents}
+            emergencyTargetCents={allocation.emergencyTargetCents}
+            emergencyMonthsHeld={allocation.emergencyMonthsHeld}
+            assignedAheadCents={allocation.assignedAheadCents}
+            monthsFundedAhead={allocation.monthsFundedAhead}
           />
 
         </div>
