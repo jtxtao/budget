@@ -234,12 +234,12 @@ export default function CashflowCalendarWidget({ report }) {
         });
       }
       const row = byYear.get(year);
-      row.scheduledIncomeCents += row.scheduledIncomeCents;
-      row.scheduledExpenseCents += row.scheduledExpenseCents;
-      row.estimatedEssentialExpenseCents += row.estimatedEssentialExpenseCents;
-      row.irregularExpenseCents += row.irregularExpenseCents;
-      row.scheduledNetCents += row.scheduledNetCents;
-      row.runningBalanceCents = row.runningBalanceCents;
+      row.scheduledIncomeCents += month.scheduledIncomeCents;
+      row.scheduledExpenseCents += month.scheduledExpenseCents;
+      row.estimatedEssentialExpenseCents += month.estimatedEssentialExpenseCents;
+      row.irregularExpenseCents += month.irregularExpenseCents;
+      row.scheduledNetCents += month.scheduledNetCents;
+      row.runningBalanceCents = month.runningBalanceCents;
     }
     return [...byYear.values()];
   }, [projection.months]);
