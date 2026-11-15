@@ -116,7 +116,7 @@ export default function SavingsRateChart({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 pt-3">
         <span className="flex items-center gap-1.5">
           <span className="h-2 w-2 shrink-0 bg-azure" aria-hidden="true" />
-          <span className="text-label uppercase text-chalk-soft">Savings rate</span>
+          <span className="text-label uppercase text-chalk-soft">Post-tax savings rate</span>
         </span>
         {averageRatePct != null && (
           <span className="flex items-center gap-1.5">
@@ -152,7 +152,7 @@ export default function SavingsRateChart({
             viewBox={`0 0 ${view.width} ${view.height}`}
             className="w-full"
             role="group"
-            aria-label="Savings rate by month"
+            aria-label="Post-tax savings rate by month"
           >
             {ticks.map((tick) => (
               <g key={tick}>

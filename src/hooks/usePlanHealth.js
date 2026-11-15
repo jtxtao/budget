@@ -8,6 +8,7 @@ import {
 import { monthlyCents } from "../domain/cadence";
 import { useIncomePlan } from "../contexts/IncomePlanContext";
 import { useRetirement } from "../contexts/RetirementContext";
+import { useSavingsGoals } from "../contexts/SavingsGoalsContext";
 import { toSections } from "../domain/planLayout";
 import { apportion } from "../utils";
 
@@ -54,6 +55,7 @@ export default function usePlanHealth() {
   const { groups, budgets } = useBudgets();
   const { incomeRows, expectedMonthlyCents } = useIncomePlan();
   const { plan } = useRetirement();
+  const { goals } = useSavingsGoals();
 
   return useMemo(() => {
     const sections = toSections(groups, budgets);
@@ -61,7 +63,13 @@ export default function usePlanHealth() {
 
     const pretaxMonthlyCents = monthlyCents(plan.pretaxContributionCents ?? 0, "annually");
     const expectedIncomeCents = expectedMonthlyCents + pretaxMonthlyCents;
-    const plannedCents = categoryPlannedCents + pretaxMonthlyCents;
+
+    // Active (non-archived) goals with a stated monthly contribution.
+    const activeGoals = goals.filter((g) => !g.archivedOn && g.monthlyContributionCents != null);
+    const goalContributionCents = activeGoals.reduce((sum, g) => sum + g.monthlyContributionCents, 0);
+    const goalCount = activeGoals.length;
+
+    const plannedCents = categoryPlannedCents + pretaxMonthlyCents + goalContributionCents;
 
     // Read off the sections rather than the flat list: resolving "which bucket
     // is this category actually in" needs the group beside it, and toSections
@@ -75,10 +83,10 @@ export default function usePlanHealth() {
         total.count += 1;
       }
     }
-    // Pretax has no category of its own to be counted through the loop above —
-    // it is added straight to the retirement bucket's total, the same bucket
-    // `useRetirementProjection` reaches by adding it to that bucket's own sum.
+    // Pretax has no category of its own — added straight to the retirement bucket.
     totals.get(PLAN_BUCKETS.RETIREMENT).cents += pretaxMonthlyCents;
+    // Goal contributions are intentional savings — added to the savings bucket.
+    totals.get(PLAN_BUCKETS.SAVINGS).cents += goalContributionCents;
 
     const unplannedCents = expectedIncomeCents - plannedCents;
     const leftToPlanCents = Math.max(0, unplannedCents);
@@ -113,9 +121,11 @@ export default function usePlanHealth() {
       unplannedCents,
       splitCents,
       pretaxMonthlyCents,
+      goalContributionCents,
+      goalCount,
       sourceCount: incomeRows.length,
       groupCount: groups.length,
       categoryCount: budgets.length,
     };
-  }, [groups, budgets, incomeRows, expectedMonthlyCents, plan.pretaxContributionCents]);
+  }, [groups, budgets, goals, incomeRows, expectedMonthlyCents, plan.pretaxContributionCents]);
 }

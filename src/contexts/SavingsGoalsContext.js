@@ -59,7 +59,7 @@ const isDate = (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.tes
 export const ENVELOPE_COLORS = ["canopy", "sage", "kraft", "butter", "orange", "rose", "red", "lavender", "indigo", "sky", "cobalt"];
 
 /** The fields `addSavingsGoal` and `updateSavingsGoal` both have to check. */
-function parseGoalFields({ name, target, targetCents, targetDate, budgetId, photo, link, envelopeColor }) {
+function parseGoalFields({ name, target, targetCents, targetDate, budgetId, photo, link, envelopeColor, monthlyContribution }) {
   const trimmed = (name ?? "").trim();
   if (!trimmed) return { ok: false, error: "Give the goal a name." };
 
@@ -88,9 +88,19 @@ function parseGoalFields({ name, target, targetCents, targetDate, budgetId, phot
     }
   }
 
+  const rawContribution = String(monthlyContribution ?? "").trim();
+  let monthlyContributionCents = null;
+  if (rawContribution !== "") {
+    const contributionCents = toCents(rawContribution);
+    if (contributionCents == null || contributionCents < 0) {
+      return { ok: false, error: "Enter a valid monthly contribution, or leave it blank." };
+    }
+    monthlyContributionCents = contributionCents > 0 ? contributionCents : null;
+  }
+
   const goalPhoto = typeof photo === "string" && photo.startsWith("data:image/") && photo.length <= 180_000 ? photo : null;
   const color = ENVELOPE_COLORS.includes(envelopeColor) ? envelopeColor : ENVELOPE_COLORS[0];
-  return { ok: true, name: trimmed, targetCents: cents, targetDate: date, budgetId: linkedBudgetId, photo: goalPhoto, link: goalLink, envelopeColor: color };
+  return { ok: true, name: trimmed, targetCents: cents, targetDate: date, budgetId: linkedBudgetId, photo: goalPhoto, link: goalLink, envelopeColor: color, monthlyContributionCents };
 }
 
 /** Ids, deduped. Anything that is not a string was never an account id. */
@@ -186,6 +196,8 @@ function migrateGoals(stored) {
       photo: typeof goal.photo === "string" && goal.photo.startsWith("data:image/") && goal.photo.length <= 180_000 ? goal.photo : null,
       link: typeof goal.link === "string" && /^https?:\/\//i.test(goal.link) ? goal.link : null,
       envelopeColor: ENVELOPE_COLORS.includes(goal.envelopeColor) ? goal.envelopeColor : ENVELOPE_COLORS[0],
+      // Purely additive: a goal without a stated monthly rhythm has none.
+      monthlyContributionCents: isAmount(goal.monthlyContributionCents) ? goal.monthlyContributionCents : null,
       // Purely additive: a goal saved before either existed had spent nothing
       // through the app and was never closed out.
       spending: readSpending(goal.spending),
@@ -220,6 +232,7 @@ export const SavingsGoalsProvider = ({ children }) => {
           photo: parsed.photo,
           link: parsed.link,
           envelopeColor: parsed.envelopeColor,
+          monthlyContributionCents: parsed.monthlyContributionCents,
           // Empty rather than a guess at which account the money is in — the
           // `EmergencyFundContext` rule: naming one the household never agreed
           // to would put a figure on screen nobody stated.
@@ -264,6 +277,7 @@ export const SavingsGoalsProvider = ({ children }) => {
                 link: parsed.link,
                 // A patch that says nothing about the colour leaves it alone.
                 envelopeColor: fields.envelopeColor === undefined ? goal.envelopeColor : parsed.envelopeColor,
+                monthlyContributionCents: parsed.monthlyContributionCents,
                 ...holdings.patch,
               }
             : goal

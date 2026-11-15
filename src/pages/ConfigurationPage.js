@@ -355,6 +355,7 @@ export default function ConfigurationPage() {
         splitCents={health.splitCents}
         sourceCount={health.sourceCount}
         pretaxMonthlyCents={health.pretaxMonthlyCents}
+        goalContributionCents={health.goalContributionCents}
         pretaxContributionCents={plan.pretaxContributionCents}
         pretaxError={pretaxError}
         onPretaxChange={handlePretaxChange}

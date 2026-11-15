@@ -39,6 +39,7 @@ export default function AddSavingsGoalModal({ show, goal, handleClose }) {
   const targetDateRef = useRef();
   const linkRef = useRef();
   const budgetIdRef = useRef();
+  const monthlyContributionRef = useRef();
   const [error, setError] = useState(null);
   // The draft of where the money is held: which accounts, and how much of one
   // where only part of it is this goal's.
@@ -68,6 +69,7 @@ export default function AddSavingsGoalModal({ show, goal, handleClose }) {
     targetDateRef.current.value = goal?.targetDate ?? "";
     linkRef.current.value = goal?.link ?? "";
     budgetIdRef.current.value = goal?.budgetId ?? "";
+    monthlyContributionRef.current.value = goal?.monthlyContributionCents ? amountEditing(goal.monthlyContributionCents) : "";
     setAccountIds(goal?.accountIds ?? []);
     setAmounts(goal?.accountAmounts ?? {});
     setPhoto(goal?.photo ?? null);
@@ -127,6 +129,7 @@ export default function AddSavingsGoalModal({ show, goal, handleClose }) {
       targetDate: targetDateRef.current.value || null,
       link: linkRef.current.value,
       budgetId: budgetIdRef.current.value || null,
+      monthlyContribution: monthlyContributionRef.current.value,
       accountIds,
       // Kept rather than filtered to the ticked accounts, the switched-away-from
       // rule: unticking an account and ticking it again should not lose the part
@@ -198,6 +201,13 @@ export default function AddSavingsGoalModal({ show, goal, handleClose }) {
           label="Target date (optional)"
           inputRef={targetDateRef}
           type="date"
+        />
+        <Field
+          label="Monthly contribution (optional)"
+          inputRef={monthlyContributionRef}
+          type="text"
+          inputMode="decimal"
+          placeholder="$0.00"
         />
         <Field
           label="Link (optional)"

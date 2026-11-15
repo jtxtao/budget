@@ -152,6 +152,7 @@ export default function useSavingsGoalEnvelopes(period) {
         })),
         budgetId: goal.budgetId ?? null,
         archivedOn: goal.archivedOn ?? null,
+        monthlyContributionCents: goal.monthlyContributionCents ?? null,
         remainingCents: Math.max(goal.targetCents - savedCents - spentCents, 0),
       };
     });

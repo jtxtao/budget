@@ -49,7 +49,8 @@ const STALE_AFTER_DAYS = 31;
  * date is tested rather than the age — `null <= 31` is true in JS, and an
  * account nobody has ever checked is the one case this must never call settled.
  */
-function isUpToDate(account, daysSince) {
+function isUpToDate(account, daysSince, balanceCents) {
+  if (account.type === ACCOUNT_TYPES.LIABILITY && balanceCents === 0) return true;
   return account.reconciledOn != null && daysSince <= STALE_AFTER_DAYS;
 }
 
@@ -60,14 +61,19 @@ function isUpToDate(account, daysSince) {
  * — and on this light surface `vermilion-ink` is the one warning tone that
  * carries text, since the accents are tuned for the dark chrome.
  */
-function reconciliation(account, daysSince) {
+function reconciliation(account, daysSince, balanceCents) {
+  const settled = account.type === ACCOUNT_TYPES.LIABILITY && balanceCents === 0;
   if (account.reconciledOn == null) {
-    return { text: "Never", note: "Not checked yet", tone: "text-vermilion-ink" };
+    return {
+      text: "Never",
+      note: "Not checked yet",
+      tone: settled ? "text-ink" : "text-vermilion-ink",
+    };
   }
   return {
     text: formatDateMedium(account.reconciledOn),
     note: formatDayDelta(-daysSince),
-    tone: daysSince > STALE_AFTER_DAYS ? "text-vermilion-ink" : "text-ink",
+    tone: !settled && daysSince > STALE_AFTER_DAYS ? "text-vermilion-ink" : "text-ink",
   };
 }
 
@@ -82,7 +88,7 @@ function ReconciliationRow({
   sortable,
 }) {
   const item = useSortableItem(account.id, { disabled: !sortable });
-  const status = reconciliation(account, daysSince);
+  const status = reconciliation(account, daysSince, balanceCents);
   // The same single definition of trouble as everywhere else: something owned
   // that has gone under. Neither way a debt can read is trouble — owed is what a
   // debt is for, and a card in credit is money waiting on it.
@@ -211,7 +217,7 @@ export default function ReconciliationList({
   onConfirm,
   onReorder,
 }) {
-  const unchecked = rows.filter((row) => !isUpToDate(row.account, row.daysSince)).length;
+  const unchecked = rows.filter((row) => !isUpToDate(row.account, row.daysSince, row.balanceCents)).length;
 
   return (
     <section className="overflow-hidden rounded-2xl border border-edge bg-panel">

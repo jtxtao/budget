@@ -155,7 +155,7 @@ export default function ReportSummary({ report, peopleCount = 1 }) {
             share of. The dollar figures beside it are unaffected, so refusing to
             invent one costs nothing. */}
         <Tile
-          label="Savings rate"
+          label="Post-tax savings rate"
           figure={savingsRateBps == null ? "—" : formatBps(savingsRateBps)}
           tone={savingsRateBps == null ? "text-chalk-soft" : netTone(netCents)}
           note={

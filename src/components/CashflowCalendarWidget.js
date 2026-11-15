@@ -38,9 +38,8 @@ import {
  * the schedule. Starting from next month avoids that entirely.
  */
 
-/** Months of scheduled cashflow to show ahead of today. */
 const PROJECTION_MONTHS = 12;
-const WEEK_COUNT = 8;
+const PROJECTION_YEARS_MONTHS = 120;
 
 function historicalEssentialCents(transactions, essentialBudgetIds, period, excludedIds = new Set()) {
   let total = 0;
@@ -61,7 +60,7 @@ export default function CashflowCalendarWidget({ report }) {
   // Read once so today and all derived figures stay in agreement throughout.
   const [today] = useState(currentPeriod);
   const [currentDate] = useState(todayISO);
-  const [view, setView] = useState("weeks");
+  const [view, setView] = useState("months");
   // On-budget balance as of the current period — the figure the running
   // balance projection starts from, and the same one the dashboard shows.
   const accountBalances = useAccountBalances(today);
@@ -158,7 +157,7 @@ export default function CashflowCalendarWidget({ report }) {
     let runningBalance = startBalance;
     const months = [];
 
-    for (let i = 1; i <= PROJECTION_MONTHS; i++) {
+    for (let i = 1; i <= PROJECTION_YEARS_MONTHS; i++) {
       const period = addMonths(today, i);
       const from = `${period}-01`;
       const to = periodEnd(period);
@@ -198,7 +197,7 @@ export default function CashflowCalendarWidget({ report }) {
     const daily = [];
     let dailyBalance = startBalance;
     const fromDate = addDays(currentDate, 1);
-    const throughDate = addDays(fromDate, PROJECTION_MONTHS * 31);
+    const throughDate = addDays(fromDate, PROJECTION_YEARS_MONTHS * 31);
     for (let date = fromDate; date <= throughDate; date = addDays(date, 1)) {
       let income = 0;
       let expense = 0;
@@ -216,21 +215,34 @@ export default function CashflowCalendarWidget({ report }) {
     const lowBalanceDate = startBalance < 0
       ? currentDate
       : daily.find((day) => day.balanceCents < 0)?.date ?? null;
-    const weeks = Array.from({ length: WEEK_COUNT }, (_, index) => {
-      const start = addDays(fromDate, index * 7);
-      const end = addDays(start, 6);
-      const slice = daily.filter((day) => day.date >= start && day.date <= end);
-      return {
-        start, end,
-        scheduledIncomeCents: slice.reduce((sum, day) => sum + day.incomeCents, 0),
-        scheduledExpenseCents: slice.reduce((sum, day) => sum + day.expenseCents, 0),
-        estimatedEssentialExpenseCents: slice.reduce((sum, day) => sum + day.essentialsCents, 0),
-        irregularExpenseCents: slice.reduce((sum, day) => sum + day.irregularCents, 0),
-        runningBalanceCents: slice[slice.length - 1]?.balanceCents ?? dailyBalance,
-      };
-    });
-    return { startBalance, months, weeks, lowBalanceDate };
+    return { startBalance, months, lowBalanceDate };
   }, [schedules, accountBalances.onBudgetCents, today, currentDate, history, irregulars]);
+
+  const yearRows = useMemo(() => {
+    const byYear = new Map();
+    for (const month of projection.months) {
+      const year = month.period.slice(0, 4);
+      if (!byYear.has(year)) {
+        byYear.set(year, {
+          year,
+          scheduledIncomeCents: 0,
+          scheduledExpenseCents: 0,
+          estimatedEssentialExpenseCents: 0,
+          irregularExpenseCents: 0,
+          scheduledNetCents: 0,
+          runningBalanceCents: 0,
+        });
+      }
+      const row = byYear.get(year);
+      row.scheduledIncomeCents += row.scheduledIncomeCents;
+      row.scheduledExpenseCents += row.scheduledExpenseCents;
+      row.estimatedEssentialExpenseCents += row.estimatedEssentialExpenseCents;
+      row.irregularExpenseCents += row.irregularExpenseCents;
+      row.scheduledNetCents += row.scheduledNetCents;
+      row.runningBalanceCents = row.runningBalanceCents;
+    }
+    return [...byYear.values()];
+  }, [projection.months]);
 
   // Runway from the historical average monthly net. Null until there are at
   // least two covered months — a single month's net is too volatile to divide
@@ -284,7 +296,7 @@ export default function CashflowCalendarWidget({ report }) {
             : "Projected balance stays above $0 over the next 12 months."}
         </div>
         <div className="inline-flex rounded-lg border border-edge p-0.5" role="group" aria-label="Cashflow calendar view">
-          {[{ id: "weeks", label: "Next 8 weeks" }, { id: "months", label: "12 months" }].map((option) => (
+          {[{ id: "months", label: "12 months" }, { id: "years", label: "Over years" }].map((option) => (
             <button key={option.id} type="button" aria-pressed={view === option.id}
               onClick={() => setView(option.id)}
               className={`rounded-md px-3 py-1 text-label uppercase ${view === option.id ? "bg-panel-raised text-chalk" : "text-chalk-soft hover:text-chalk"}`}>
@@ -308,12 +320,9 @@ export default function CashflowCalendarWidget({ report }) {
                   scope="col"
                   className="bg-panel-raised px-4 py-2 text-left text-label uppercase text-chalk"
                 >
-                  {view === "weeks" ? "Week" : "Month"}
+                  Month
                 </th>
-                {(view === "weeks"
-                  ? ["Scheduled in", "Scheduled out", "Est. essentials", "Known irregulars", "Projected balance"]
-                  : ["Scheduled in", "Scheduled out", "Est. essentials", "Known irregulars", "Scheduled net", "Running balance"]
-                ).map((label) => (
+                {["Scheduled in", "Scheduled out", "Est. essentials", "Known irregulars", "Scheduled net", "Running balance"].map((label) => (
                   <th
                     key={label}
                     scope="col"
@@ -325,45 +334,45 @@ export default function CashflowCalendarWidget({ report }) {
               </tr>
             </thead>
             <tbody>
-              {(view === "weeks" ? projection.weeks : projection.months).map((month, index) => (
-                <tr key={view === "weeks" ? month.start : month.period} className={index % 2 === 0 ? "bg-sheet" : "bg-sheet-alt"}>
+              {(view === "months" ? projection.months.slice(0, PROJECTION_MONTHS) : yearRows).map((row, index) => (
+                <tr key={view === "months" ? row.period : row.year} className={index % 2 === 0 ? "bg-sheet" : "bg-sheet-alt"}>
                   <th
                     scope="row"
                     className="whitespace-nowrap px-4 py-2 text-left font-sans text-row font-normal text-ink"
                   >
-                    {view === "weeks" ? `${formatDateMedium(month.start)} – ${formatDateMedium(month.end)}` : formatPeriod(month.period)}
+                    {view === "months" ? formatPeriod(row.period) : row.year}
                   </th>
                   <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-row tabular-nums text-ink">
-                    {view === "weeks" ? (month.scheduledIncomeCents ? formatCents(month.scheduledIncomeCents) : "—") : (month.scheduledIncomeCents === 0 ? "—" : formatCents(month.scheduledIncomeCents))}
+                    {row.scheduledIncomeCents === 0 ? "—" : formatCents(row.scheduledIncomeCents)}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-row tabular-nums text-ink">
-                    {month.scheduledExpenseCents === 0
+                    {row.scheduledExpenseCents === 0
                       ? "—"
-                      : formatCents(month.scheduledExpenseCents)}
+                      : formatCents(row.scheduledExpenseCents)}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-row tabular-nums text-ink-soft">
-                    {month.estimatedEssentialExpenseCents === 0 ? "—" : formatCents(month.estimatedEssentialExpenseCents)}
+                    {row.estimatedEssentialExpenseCents === 0 ? "—" : formatCents(row.estimatedEssentialExpenseCents)}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-row tabular-nums text-ink-soft">
-                    {month.irregularExpenseCents ? formatCents(month.irregularExpenseCents) : "—"}
+                    {row.irregularExpenseCents ? formatCents(row.irregularExpenseCents) : "—"}
                   </td>
-                  {view === "months" && <td
+                  <td
                     className={`whitespace-nowrap px-3 py-2 text-right font-mono text-row font-medium tabular-nums ${
-                      month.scheduledNetCents < 0
+                      row.scheduledNetCents < 0
                         ? "text-vermilion-ink"
-                        : month.scheduledNetCents > 0
+                        : row.scheduledNetCents > 0
                         ? "text-ink"
                         : "text-ink-soft"
                     }`}
                   >
-                    {month.scheduledNetCents === 0 ? "—" : formatCents(month.scheduledNetCents)}
-                  </td>}
+                    {row.scheduledNetCents === 0 ? "—" : formatCents(row.scheduledNetCents)}
+                  </td>
                   <td
                     className={`whitespace-nowrap px-3 py-2 text-right font-mono text-row font-medium tabular-nums ${
-                      month.runningBalanceCents < 0 ? "text-vermilion-ink" : "text-ink"
+                      row.runningBalanceCents < 0 ? "text-vermilion-ink" : "text-ink"
                     }`}
                   >
-                    {formatCents(month.runningBalanceCents)}
+                    {formatCents(row.runningBalanceCents)}
                   </td>
                 </tr>
               ))}

@@ -74,6 +74,7 @@ export default function PlanHealthSummary({
   splitCents = plannedCents,
   sourceCount,
   pretaxMonthlyCents = 0,
+  goalContributionCents = 0,
   pretaxContributionCents = null,
   pretaxError = null,
   onPretaxChange,
@@ -145,6 +146,11 @@ export default function PlanHealthSummary({
           {pretaxMonthlyCents > 0 && (
             <dd className="mt-0.5 text-label uppercase text-chalk-soft">
               Includes {formatCents(pretaxMonthlyCents)} pretax retirement
+            </dd>
+          )}
+          {goalContributionCents > 0 && (
+            <dd className="mt-0.5 text-label uppercase text-chalk-soft">
+              Includes {formatCents(goalContributionCents)} toward goals
             </dd>
           )}
         </div>
@@ -270,6 +276,9 @@ export default function PlanHealthSummary({
                   {/* Savings carries what is left to plan by default, so the
                       row would look miscounted against its categories without
                       saying so. */}
+                  {row.bucket === PLAN_BUCKETS.SAVINGS && goalContributionCents > 0 && (
+                    <> + {formatCents(goalContributionCents)} toward goals</>
+                  )}
                   {row.leftToPlanCents > 0 && (
                     <> + {formatCents(row.leftToPlanCents)} left to plan</>
                   )}
