@@ -70,7 +70,7 @@ function Tile({ label, figure, tone = "text-chalk", note = null }) {
   );
 }
 
-export default function ReportSummary({ report, peopleCount = 1 }) {
+export default function ReportSummary({ report, peopleCount = 1, goalContributionsCents = 0 }) {
   const {
     range,
     startPeriod,
@@ -88,6 +88,9 @@ export default function ReportSummary({ report, peopleCount = 1 }) {
     averageNetCents,
     buckets,
   } = report;
+
+  const averageGoalContributionsCents =
+    averagedOverMonths > 1 ? Math.round(goalContributionsCents / averagedOverMonths) : null;
 
   // SplitGauge draws nothing from all-zero weights and cannot read a negative
   // one, so the weights are clamped and the whole row is suppressed rather than
@@ -145,10 +148,16 @@ export default function ReportSummary({ report, peopleCount = 1 }) {
           }
         />
         <Tile
-          label="Net"
-          figure={formatCents(netCents)}
-          tone={netTone(netCents)}
-          note={amortised ? `${formatCents(averageNetCents)} a month` : null}
+          label="Toward goals"
+          figure={goalContributionsCents > 0 ? formatCents(goalContributionsCents) : "—"}
+          tone={goalContributionsCents > 0 ? "text-verdant" : "text-chalk-soft"}
+          note={
+            goalContributionsCents > 0 && averageGoalContributionsCents != null
+              ? `${formatCents(averageGoalContributionsCents)} a month`
+              : goalContributionsCents > 0
+                ? null
+                : "No goal contributions"
+          }
         />
         {/* A dash where a rate would be a fiction: no income in the window is
             not a savings rate of nothing, it is a window with nothing to be a
@@ -173,10 +182,11 @@ export default function ReportSummary({ report, peopleCount = 1 }) {
             Even share across {peopleCount} {peopleCount === 1 ? "person" : "people"}
           </span>
         </div>
-        <dl className="mt-2 grid gap-3 sm:grid-cols-3">
+        <dl className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[
             ["Income", totalIncomeCents],
             ["Spending", netSpentCents],
+            ["Toward goals", goalContributionsCents],
             ["Net", netCents],
           ].map(([label, cents]) => (
             <div key={label} className="flex items-baseline justify-between gap-2">

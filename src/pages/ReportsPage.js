@@ -19,6 +19,8 @@ import SpendingHeatmap from "../components/SpendingHeatmap";
 import { useAccounts } from "../contexts/AccountsContext";
 import { useHousehold } from "../contexts/HouseholdContext";
 import { usePayees } from "../contexts/PayeesContext";
+import { useSavingsGoalAssignments } from "../contexts/SavingsGoalAssignmentsContext";
+import { useSavingsGoals } from "../contexts/SavingsGoalsContext";
 import useSpendingReport, {
   CUSTOM_REPORT_RANGE,
   DEFAULT_REPORT_RANGE,
@@ -175,6 +177,25 @@ export default function ReportsPage() {
   const [selectedBudgetId, setSelectedBudgetId] = useState(null);
 
   const report = useSpendingReport(endPeriod, rangeKey, chosenStart);
+  const { goalAssignments } = useSavingsGoalAssignments();
+  const { goals } = useSavingsGoals();
+
+  // Goal contributions are assignments, not transactions — useSpendingReport
+  // deliberately excludes them. Sum them here, over the same window, so the
+  // summary and the monthly table can show spending vs. goal saving side by side.
+  const { goalContribsByPeriod, totalGoalContributionsCents } = useMemo(() => {
+    const activeGoalIds = new Set(goals.filter((g) => !g.archivedOn).map((g) => g.id));
+    const byPeriod = new Map(report.months.map((p) => [p, 0]));
+    let total = 0;
+    for (const a of goalAssignments) {
+      if (activeGoalIds.has(a.goalId) && byPeriod.has(a.period)) {
+        byPeriod.set(a.period, byPeriod.get(a.period) + a.assignedCents);
+        total += a.assignedCents;
+      }
+    }
+    return { goalContribsByPeriod: byPeriod, totalGoalContributionsCents: total };
+  }, [goalAssignments, goals, report.months]);
+
   const { accounts } = useAccounts();
   // Expenses are recorded for the shared household rather than assigned to a
   // member. The report's per-person figures are therefore an even share of
@@ -286,7 +307,7 @@ export default function ReportsPage() {
       ) : (
         <div className="space-y-4">
           <ReportWidgetLayout>
-          <div data-widget-id="summary"><ReportSummary report={report} peopleCount={peopleCount} /></div>
+          <div data-widget-id="summary"><ReportSummary report={report} peopleCount={peopleCount} goalContributionsCents={totalGoalContributionsCents} /></div>
           <section data-widget-id="calendar" className="overflow-hidden rounded-2xl border border-edge bg-panel">
             <CashflowCalendarWidget report={report} />
           </section>
@@ -397,7 +418,7 @@ export default function ReportsPage() {
                       >
                         Month
                       </th>
-                      {["Income", "Spending", "Refunded", "Net"].map((label) => (
+                      {["Income", "Spending", "Refunded", "Goals", "Net"].map((label) => (
                         <th
                           key={label}
                           scope="col"
@@ -432,6 +453,11 @@ export default function ReportsPage() {
                         <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-row tabular-nums text-ink-soft">
                           {month.refundCents === 0 ? "—" : formatCents(month.refundCents)}
                         </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-row tabular-nums text-verdant">
+                          {(goalContribsByPeriod.get(month.period) ?? 0) === 0
+                            ? "—"
+                            : formatCents(goalContribsByPeriod.get(month.period))}
+                        </td>
                         <td
                           className={`whitespace-nowrap px-3 py-2 text-right font-mono text-row font-medium tabular-nums ${
                             month.netCents < 0 ? "text-vermilion-ink" : "text-ink"
@@ -454,6 +480,7 @@ export default function ReportsPage() {
                         report.totalIncomeCents,
                         report.netSpentCents,
                         report.totalRefundCents,
+                        totalGoalContributionsCents,
                         report.netCents,
                       ].map((cents, index) => (
                         <td
