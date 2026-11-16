@@ -237,6 +237,8 @@ export default function NetWorthPage() {
             emergencyMonthsHeld={allocation.emergencyMonthsHeld}
             assignedAheadCents={allocation.assignedAheadCents}
             monthsFundedAhead={allocation.monthsFundedAhead}
+            toBeAssignedCents={allocation.toBeAssignedCents}
+            totalAvailableCents={allocation.totalAvailableCents}
           />
 
         </div>

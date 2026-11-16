@@ -59,19 +59,25 @@ export default function NetWorthAllocationPanel({
   emergencyMonthsHeld,
   assignedAheadCents = 0,
   monthsFundedAhead = 0,
+  toBeAssignedCents = 0,
+  totalAvailableCents = 0,
 }) {
   const hasRetirement = retirementAccountCount > 0;
   const hasEmergency = emergencyTargetCents > 0 || emergencyHeldCents > 0;
   const visibleGoals = goals.filter((g) => g.savedCents > 0);
   const hasGoals = visibleGoals.length > 0;
   const hasAhead = assignedAheadCents > 0;
-  const hasAnything = hasRetirement || hasEmergency || hasGoals || hasAhead;
+  const hasAvailable = totalAvailableCents !== 0;
+  const hasToAssign = toBeAssignedCents !== 0;
+  const hasAnything = hasRetirement || hasEmergency || hasGoals || hasAhead || hasAvailable || hasToAssign;
 
   const totalEarmarkedCents =
     (hasRetirement ? retirementCents : 0) +
     (hasEmergency ? emergencyHeldCents : 0) +
     (hasAhead ? assignedAheadCents : 0) +
-    totalGoalSavedCents;
+    totalGoalSavedCents +
+    totalAvailableCents +
+    toBeAssignedCents;
   const unaccountedCents = netCents - totalEarmarkedCents;
 
   return (
@@ -138,6 +144,38 @@ export default function NetWorthAllocationPanel({
             {monthsFundedAhead > 0
               ? `${monthsFundedAhead} ${monthsFundedAhead === 1 ? "month" : "months"} funded ahead`
               : "funding future months"}
+          </div>
+        </PurposeRow>
+      )}
+
+      {hasAvailable && (
+        <PurposeRow to="/" linkLabel="Dashboard">
+          <div className="text-label uppercase text-chalk-soft">Available to spend</div>
+          <div
+            className={`mt-0.5 font-mono text-figure font-medium ${
+              totalAvailableCents < 0 ? "text-vermilion" : "text-chalk"
+            }`}
+          >
+            {formatCents(totalAvailableCents)}
+          </div>
+          <div className="mt-0.5 text-label uppercase text-chalk-soft">
+            {totalAvailableCents < 0 ? "categories are overspent" : "in category envelopes"}
+          </div>
+        </PurposeRow>
+      )}
+
+      {hasToAssign && (
+        <PurposeRow to="/transactions" linkLabel="Assign">
+          <div className="text-label uppercase text-chalk-soft">To be assigned</div>
+          <div
+            className={`mt-0.5 font-mono text-figure font-medium ${
+              toBeAssignedCents < 0 ? "text-vermilion" : "text-chalk"
+            }`}
+          >
+            {formatCents(toBeAssignedCents)}
+          </div>
+          <div className="mt-0.5 text-label uppercase text-chalk-soft">
+            {toBeAssignedCents < 0 ? "pool is overcommitted" : "ready to assign"}
           </div>
         </PurposeRow>
       )}

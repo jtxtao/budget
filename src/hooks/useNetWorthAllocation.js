@@ -30,7 +30,7 @@ export default function useNetWorthAllocation(period) {
   const { plan } = useRetirement();
   const goalRows = useSavingsGoalEnvelopes(period);
   const emergency = useEmergencyFund();
-  const { assignedAheadCents, monthsFundedAhead } = useEnvelopes(period);
+  const { assignedAheadCents, monthsFundedAhead, toBeAssignedCents, totalAvailableCents } = useEnvelopes(period);
 
   return useMemo(() => {
     const retirementRows = rows.filter((row) => retirementAccountIncluded(plan, row));
@@ -57,6 +57,8 @@ export default function useNetWorthAllocation(period) {
       // `useEnvelopes` sums both future category and future goal assignments.
       assignedAheadCents,
       monthsFundedAhead,
+      toBeAssignedCents,
+      totalAvailableCents,
     };
-  }, [current.netCents, rows, plan, goalRows, emergency, assignedAheadCents, monthsFundedAhead]);
+  }, [current.netCents, rows, plan, goalRows, emergency, assignedAheadCents, monthsFundedAhead, toBeAssignedCents, totalAvailableCents]);
 }
