@@ -2,6 +2,7 @@ import { useState } from "react";
 import AddSavingsGoalModal from "../components/AddSavingsGoalModal";
 import ArchivedGoalList from "../components/ArchivedGoalList";
 import CloseOutGoalModal from "../components/CloseOutGoalModal";
+import MoveToGoalModal from "../components/MoveToGoalModal";
 import SpendFromGoalModal from "../components/SpendFromGoalModal";
 import Button from "../components/Button";
 import PageHeader from "../components/PageHeader";
@@ -52,7 +53,7 @@ export default function SavingsGoalsPage() {
   const householdInUse = useHouseholdInUse();
   const period = currentPeriod();
 
-  const { toBeAssignedCents } = useEnvelopes(period);
+  const { toBeAssignedCents, rows: envelopeRows } = useEnvelopes(period);
   const { setAssignedAmount } = useSavingsGoalAssignments();
   const { goals, deleteSavingsGoal, reorderSavingsGoals } = useSavingsGoals();
   const allRows = useSavingsGoalEnvelopes(period);
@@ -62,8 +63,12 @@ export default function SavingsGoalsPage() {
   // Ids rather than rows, so an open form reads the goal's current figures.
   const [spendingId, setSpendingId] = useState(null);
   const [closingId, setClosingId] = useState(null);
+  const [movingId, setMovingId] = useState(null);
   const spendingRow = rows.find((row) => row.goalId === spendingId) ?? null;
   const closingRow = rows.find((row) => row.goalId === closingId) ?? null;
+  const movingRow = rows.find((row) => row.goalId === movingId) ?? null;
+  const movingCategoryAvailable =
+    envelopeRows.find((r) => r.budgetId === movingRow?.budgetId)?.availableCents ?? 0;
 
   function dismissAddExplainer() {
     setShowAddExplainer(false);
@@ -129,6 +134,7 @@ export default function SavingsGoalsPage() {
           onDelete={handleDelete}
           onReorder={reorderSavingsGoals}
           onSpend={(row) => setSpendingId(row.goalId)}
+          onMoveFromCategory={(row) => setMovingId(row.goalId)}
           onArchive={(row) => setClosingId(row.goalId)}
           onUndoSpending={handleUndoSpending}
         />
@@ -165,6 +171,13 @@ export default function SavingsGoalsPage() {
         show={spendingRow != null}
         row={spendingRow}
         handleClose={() => setSpendingId(null)}
+      />
+
+      <MoveToGoalModal
+        show={movingRow != null}
+        row={movingRow}
+        categoryAvailableCents={movingCategoryAvailable}
+        handleClose={() => setMovingId(null)}
       />
 
       <CloseOutGoalModal

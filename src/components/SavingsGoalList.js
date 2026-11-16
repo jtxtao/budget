@@ -85,7 +85,7 @@ function SpendingList({ row, onUndoSpending }) {
   );
 }
 
-function GoalCard({ row, onAssign, onEdit, onDelete, onSpend, onArchive, onUndoSpending, error, sortable }) {
+function GoalCard({ row, onAssign, onEdit, onDelete, onSpend, onMoveFromCategory, onArchive, onUndoSpending, error, sortable }) {
   const item = useSortableItem(row.goalId, { disabled: !sortable });
   const [confirmation, setConfirmation] = useState(null);
   const [expanded, setExpanded] = useState(false);
@@ -176,6 +176,11 @@ function GoalCard({ row, onAssign, onEdit, onDelete, onSpend, onArchive, onUndoS
             <input key={row.assignedCents} id={`goal-add-${row.goalId}`} type="text" inputMode="decimal" placeholder="$0" aria-label={`Add to ${row.name}`} onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }} onBlur={handleBlur} className="w-28 border-b-2 border-rule bg-transparent px-1 py-1 text-right font-mono text-row text-chalk outline-none focus:border-azure" />
             {confirmation !== null && <span className="text-label text-verdant">{confirmation > 0 ? "+" : ""}{formatCents(confirmation)}</span>}
             <span className="flex-1" />
+            {onMoveFromCategory && row.budgetId && (
+              <Button variant="row-action" size="sm" aria-label={`Move from ${row.categoryName ?? "category"} to ${row.name}`} onClick={() => onMoveFromCategory(row)}>
+                Move from {row.categoryName ?? "category"}
+              </Button>
+            )}
             {onSpend && <Button variant="row-action" size="sm" aria-label={`Spend from ${row.name}`} onClick={() => onSpend(row)}>Spend</Button>}
             <Button variant="row-action" size="sm" aria-label={`Edit goal: ${row.name}`} onClick={() => onEdit(row)}>Edit</Button>
             {onArchive && <Button variant="row-action" size="sm" aria-label={`Close out goal: ${row.name}`} onClick={() => onArchive(row)}>Close out</Button>}
@@ -188,7 +193,7 @@ function GoalCard({ row, onAssign, onEdit, onDelete, onSpend, onArchive, onUndoS
   );
 }
 
-export default function SavingsGoalList({ rows, onAssign, onEdit, onDelete, onReorder, onSpend, onArchive, onUndoSpending }) {
+export default function SavingsGoalList({ rows, onAssign, onEdit, onDelete, onReorder, onSpend, onMoveFromCategory, onArchive, onUndoSpending }) {
   const [error, setError] = useState(null);
   function commit(row, cents) {
     const result = onAssign(row, cents);
@@ -207,7 +212,7 @@ export default function SavingsGoalList({ rows, onAssign, onEdit, onDelete, onRe
         <div className="p-4 sm:p-5">
           <SortableList ids={rows.map((row) => row.goalId)} onReorder={onReorder ?? (() => {})}>
             <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {rows.map((row) => <GoalCard key={row.goalId} row={row} onAssign={commit} onEdit={onEdit} onDelete={onDelete} onSpend={onSpend} onArchive={onArchive} onUndoSpending={onUndoSpending} error={error?.id === row.goalId ? error.message : null} sortable={onReorder != null} />)}
+              {rows.map((row) => <GoalCard key={row.goalId} row={row} onAssign={commit} onEdit={onEdit} onDelete={onDelete} onSpend={onSpend} onMoveFromCategory={onMoveFromCategory} onArchive={onArchive} onUndoSpending={onUndoSpending} error={error?.id === row.goalId ? error.message : null} sortable={onReorder != null} />)}
             </div>
           </SortableList>
         </div>

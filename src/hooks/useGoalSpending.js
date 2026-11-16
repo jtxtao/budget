@@ -194,6 +194,38 @@ export default function useGoalSpending() {
     [setGoalArchived]
   );
 
-  return { spendFromGoal, undoGoalSpending, archiveGoal, restoreGoal };
+  /**
+   * Move money from a category envelope into a savings goal — the reverse of
+   * spendFromGoal. No transaction is created: this is a pure assignment shuffle.
+   * The category loses `amountCents` of assignment in `period`, the goal gains
+   * it, and "to be assigned" is unchanged.
+   */
+  const moveFromCategory = useCallback(
+    ({ goalId, budgetId, amountCents, period }) => {
+      const goal = goals.find((g) => g.id === goalId);
+      if (!goal) return { ok: false, error: "That savings goal no longer exists." };
+      if (goal.archivedOn) return { ok: false, error: "That goal is archived. Restore it first." };
+      if (!budgets.some((b) => b.id === budgetId)) {
+        return { ok: false, error: "That category no longer exists." };
+      }
+      if (!Number.isInteger(amountCents) || amountCents <= 0) {
+        return { ok: false, error: "Enter an amount greater than zero." };
+      }
+      setAssignedAmount({
+        budgetId,
+        period,
+        amountCents: getAssignedCents(budgetId, period) - amountCents,
+      });
+      setGoalAssigned({
+        goalId,
+        period,
+        amountCents: getGoalAssigned(goalId, period) + amountCents,
+      });
+      return { ok: true };
+    },
+    [goals, budgets, getAssignedCents, setAssignedAmount, getGoalAssigned, setGoalAssigned]
+  );
+
+  return { spendFromGoal, undoGoalSpending, archiveGoal, restoreGoal, moveFromCategory };
 }
 
