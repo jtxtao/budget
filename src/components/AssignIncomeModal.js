@@ -75,8 +75,16 @@ export default function AssignIncomeModal({
   // funded from this month's ordinary pool — see `useStartingBalances`. The
   // month is part of what that override *means* (a period before the books
   // open), so that is the one use with no stepper on it.
-  const poolCents = poolCentsOverride ?? toBeAssignedCents;
   const steppable = poolCentsOverride == null;
+  // For a past period, toBeAssigned subtracts every assignment filed after that
+  // month — including ones funded from later income — which makes the pool look
+  // smaller than it actually was. Adding assignedAhead back gives the honest
+  // "how much was left at the end of that period" figure without dragging in
+  // money that hadn't arrived yet.
+  const isPastPeriod =
+    steppable && periodLTE(month, currentPeriod()) && month !== currentPeriod();
+  const poolCents =
+    poolCentsOverride ?? (isPastPeriod ? toBeAssignedCents + assignedAheadCents : toBeAssignedCents);
 
   // What the pool figure needs said about it, in the order it needs saying. A
   // month ahead is funded out of today's money, and the pool does not move when
@@ -87,7 +95,7 @@ export default function AssignIncomeModal({
   const notes = steppable
     ? [
         periodLTE(month, currentPeriod()) ? null : "Funding ahead, out of today's money",
-        assignedAheadCents > 0
+        !isPastPeriod && assignedAheadCents > 0
           ? `${formatCents(assignedAheadCents)} assigned ahead${monthsFundedAhead > 0 ? ` · ${monthsFundedAhead} ${monthsFundedAhead === 1 ? "month" : "months"}` : ""}`
           : null,
       ].filter(Boolean)
