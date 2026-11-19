@@ -85,6 +85,14 @@ export const PLAN_BUCKET_LABELS = {
 // or as saving would flatter the split.
 export const DEFAULT_BUCKET = PLAN_BUCKETS.ESSENTIALS;
 
+/**
+ * How many categories the dashboard's spending focus holds. A focus on
+ * everything is the category table again; eight is two rows of four widgets.
+ */
+export const MAX_FOCUSED_BUDGETS = 8;
+
+const FOCUS_FULL_ERROR = `The spending focus holds ${MAX_FOCUSED_BUDGETS} categories. Take one off to add another.`;
+
 const isBucket = (value) => PLAN_BUCKET_ORDER.includes(value);
 
 /**
@@ -234,6 +242,11 @@ function migrateBudgets(stored) {
       // into rolling over and showing, undoing a choice nobody made.
       ...(budget.rolloverEnabled === false && { rolloverEnabled: false }),
       ...(budget.hidden === true && { hidden: true }),
+      // The dashboard's spending focus, carried the same way. Not capped here:
+      // a stored ninth (another device racing this one) is a choice somebody
+      // made, and the panel shows the first eight in plan order rather than
+      // silently unticking one.
+      ...(budget.focused === true && { focused: true }),
     }));
 }
 
@@ -273,7 +286,7 @@ function migrateGroups(stored) {
  * mutator — `setCategoryLayout` — that rewrites both lists at once, because a
  * drag can change a category's group and its position in the same gesture.
  *
- * Two booleans, stored only once stated so an untouched category keeps the
+ * Three booleans, stored only once stated so an untouched category keeps the
  * shape it always had. `rolloverEnabled: false` says this category's
  * overspending is not carried into the next month as a debt against it — see
  * `useEnvelopes`' `forgivenOverspendCents` for what that costs the pool.
@@ -281,6 +294,9 @@ function migrateGroups(stored) {
  * without touching its money or its history, the way `hidden` already works
  * nowhere else in this app but exactly the way "inert but kept" works
  * everywhere else: the sums never filter on it, only the screens do.
+ * `focused: true` puts a category on the dashboard's spending focus, at most
+ * `MAX_FOCUSED_BUDGETS` of them, in plan order — a preference about what to
+ * watch, read by no sum.
  */
 export const BudgetsProvider = ({ children }) => {
   const [groups, setGroups] = useSyncedState("budgetGroups", [], migrateGroups);
@@ -313,6 +329,7 @@ export const BudgetsProvider = ({ children }) => {
         bucket,
         rolloverEnabled,
         hidden,
+        focused,
       }
     ) => {
       const trimmed = (name ?? "").trim();
@@ -350,6 +367,13 @@ export const BudgetsProvider = ({ children }) => {
         return { ok: false, error: "Hidden is either on or off." };
       }
 
+      if (focused !== undefined && typeof focused !== "boolean") {
+        return { ok: false, error: "Spending focus is either on or off." };
+      }
+      if (focused === true && budgets.filter((budget) => budget.focused === true).length >= MAX_FOCUSED_BUDGETS) {
+        return { ok: false, error: FOCUS_FULL_ERROR };
+      }
+
       // A group that has since been deleted must not strand the category in a
       // heading nothing renders.
       const group = groups.some((entry) => entry.id === groupId) ? groupId : UNGROUPED_ID;
@@ -378,6 +402,7 @@ export const BudgetsProvider = ({ children }) => {
           // Same discipline: a category starts visible, so only hiding one
           // writes anything.
           ...(hidden === true && { hidden: true }),
+          ...(focused === true && { focused: true }),
         },
       ]);
       return { ok: true, id };
@@ -398,7 +423,7 @@ export const BudgetsProvider = ({ children }) => {
    * are different instructions and only the field with a null state has both.
    */
   const updateBudget = useCallback(
-    ({ id, name, planned, plannedCents, goal, goalCents, bucket, rolloverEnabled, hidden, targetMode, targetDate }) => {
+    ({ id, name, planned, plannedCents, goal, goalCents, bucket, rolloverEnabled, hidden, focused, targetMode, targetDate }) => {
       const existing = budgets.find((budget) => budget.id === id);
       if (!existing) return { ok: false, error: "That category no longer exists." };
 
@@ -460,6 +485,19 @@ export const BudgetsProvider = ({ children }) => {
           return { ok: false, error: "Hidden is either on or off." };
         }
         patch.hidden = hidden;
+      }
+
+      // The cap is checked against the others, so restating a category that is
+      // already in the focus is never refused for the focus being full.
+      if (focused !== undefined) {
+        if (typeof focused !== "boolean") {
+          return { ok: false, error: "Spending focus is either on or off." };
+        }
+        const others = budgets.filter((budget) => budget.id !== id && budget.focused === true);
+        if (focused && existing.focused !== true && others.length >= MAX_FOCUSED_BUDGETS) {
+          return { ok: false, error: FOCUS_FULL_ERROR };
+        }
+        patch.focused = focused;
       }
 
       setBudgets((prevBudgets) =>

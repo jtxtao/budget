@@ -922,3 +922,109 @@ describe("the getting-started guide", () => {
     expect(screen.getByText("A quick guide to your budget")).toBeInTheDocument();
   });
 });
+
+describe("spending focus", () => {
+  const focusPanel = () => screen.getByRole("region", { name: "Spending focus" });
+  const widget = (name) => within(focusPanel()).getByRole("article", { name });
+  const nineCategories = Array.from({ length: 9 }, (_, i) => ({
+    id: `c${i + 1}`,
+    name: `Category ${i + 1}`,
+    groupId: null,
+    plannedCents: 0,
+    bucket: null,
+    ...(i < 8 && { focused: true }),
+  }));
+
+  test("with nothing chosen it says what it is for rather than drawing empty widgets", () => {
+    seed();
+    renderPage();
+
+    expect(within(focusPanel()).getByText(/Pick up to 8 categories/)).toBeInTheDocument();
+    expect(within(focusPanel()).queryAllByRole("article")).toHaveLength(0);
+  });
+
+  test("ticking a category puts its widget on the dashboard and states the choice on the record", () => {
+    seed();
+    renderPage();
+
+    fireEvent.click(within(focusPanel()).getByRole("button", { name: "Choose categories" }));
+    const dialog = screen.getByRole("dialog", { name: "Spending focus" });
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Rent" }));
+
+    expect(widget("Rent")).toBeInTheDocument();
+    const stored = JSON.parse(localStorage.getItem("budgets"));
+    expect(stored.find((budget) => budget.id === "b1").focused).toBe(true);
+    expect(stored.find((budget) => budget.id === "b2")).not.toHaveProperty("focused");
+
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Rent" }));
+    expect(within(focusPanel()).queryAllByRole("article")).toHaveLength(0);
+  });
+
+  test("a widget is this month's spending against what there was to spend, and what is left", () => {
+    seed({
+      budgets: [
+        { id: "b1", name: "Rent", groupId: "g1", plannedCents: 150000, bucket: null, focused: true },
+      ],
+    });
+    renderPage();
+
+    const rent = widget("Rent");
+    expect(within(rent).getByText("$1,200")).toBeInTheDocument();
+    expect(within(rent).getByText("spent of $1,500 this month")).toBeInTheDocument();
+    expect(within(rent).getByText("$300 left")).toBeInTheDocument();
+    expect(within(rent).getByRole("progressbar")).toHaveAttribute("aria-valuemax", "150000");
+  });
+
+  test("an overspent category says by how much, and is compared with an ordinary month", () => {
+    seed({
+      budgets: [
+        { id: "b1", name: "Rent", groupId: "g1", plannedCents: 150000, bucket: null, focused: true },
+      ],
+      assignments: [],
+      transactions: [
+        {
+          id: "t0",
+          kind: TRANSACTION_KINDS.OUTFLOW,
+          accountId: "acc1",
+          budgetId: "b1",
+          amountCents: 90000,
+          date: `${addMonths(PERIOD, -1)}-03`,
+          description: "Last month",
+        },
+        {
+          id: "t1",
+          kind: TRANSACTION_KINDS.OUTFLOW,
+          accountId: "acc1",
+          budgetId: "b1",
+          amountCents: 120000,
+          date: `${PERIOD}-03`,
+          description: "This month",
+        },
+      ],
+    });
+    renderPage();
+
+    const rent = widget("Rent");
+    // Nothing assigned in either month: last month's $900 carries in as debt.
+    expect(within(rent).getByText("Overspent by $2,100")).toBeInTheDocument();
+    expect(within(rent).getByText("spent this month, nothing funded")).toBeInTheDocument();
+    expect(within(rent).queryByRole("progressbar")).not.toBeInTheDocument();
+    // The books start last month, so only that one month is the comparison.
+    expect(within(rent).getByText("Usually $900 a month over last month")).toBeInTheDocument();
+  });
+
+  test("eight is the limit: the rest cannot be ticked, and the store refuses a ninth", () => {
+    seed({ budgets: nineCategories, transactions: [], assignments: [] });
+    renderPage();
+
+    expect(within(focusPanel()).getAllByRole("article")).toHaveLength(8);
+    fireEvent.click(within(focusPanel()).getByRole("button", { name: "Choose categories" }));
+    const dialog = screen.getByRole("dialog", { name: "Spending focus" });
+    expect(within(dialog).getByText("8 of 8 chosen.")).toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: "Category 9" })).toBeDisabled();
+
+    // Freeing a place frees the box.
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Category 1" }));
+    expect(within(dialog).getByRole("checkbox", { name: "Category 9" })).toBeEnabled();
+  });
+});

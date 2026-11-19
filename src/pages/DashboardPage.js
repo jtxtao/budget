@@ -11,6 +11,8 @@ import ReconcileModal from "../components/ReconcileModal";
 import ActivityFeed from "../components/ActivityFeed";
 import ReconciliationList from "../components/ReconciliationList";
 import SetupGuideCallout from "../components/SetupGuideCallout";
+import SpendingFocusModal from "../components/SpendingFocusModal";
+import SpendingFocusPanel, { focusWidgets } from "../components/SpendingFocusPanel";
 import UpcomingBills from "../components/UpcomingBills";
 import { spendsThroughBudget, useAccounts } from "../contexts/AccountsContext";
 import { useBudgets } from "../contexts/BudgetsContext";
@@ -20,6 +22,8 @@ import { useSchedules } from "../contexts/SchedulesContext";
 import { TRANSACTION_KINDS, useTransactions } from "../contexts/TransactionsContext";
 import useAccountBalances from "../hooks/useAccountBalances";
 import useDashboard from "../hooks/useDashboard";
+import useSpendingReport from "../hooks/useSpendingReport";
+import { toSections } from "../domain/planLayout";
 import useHouseholdInUse from "../hooks/useHouseholdInUse";
 import useNextPaycheck from "../hooks/useNextPaycheck";
 import useRecordCashback from "../hooks/useRecordCashback";
@@ -65,7 +69,7 @@ export default function DashboardPage() {
   const period = currentPeriod();
 
   const { accounts, reconcileAccount, reorderAccounts } = useAccounts();
-  const { budgets, reorderBudgets, reorderGroups } = useBudgets();
+  const { groups, budgets, reorderBudgets, reorderGroups } = useBudgets();
   const { payeeById } = usePayees();
   const { addTransaction } = useTransactions();
   const recordCashback = useRecordCashback();
@@ -73,6 +77,12 @@ export default function DashboardPage() {
   const { rows: balanceRows } = useAccountBalances(period);
   const paycheck = useNextPaycheck(today);
   const dashboard = useDashboard(period);
+  // The spending focus reads the same envelope rows the table below does, and
+  // the report's per-category months for the trend beside each — both owned by
+  // their hooks; `focusWidgets` only picks the chosen categories out of them. A
+  // row the dashboard dropped as empty reads as zeros there, which it is.
+  const focusReport = useSpendingReport(period, "6m");
+  const [choosingFocus, setChoosingFocus] = useState(false);
   const upcoming = useUpcoming(today);
   const { matches, confirmMatch } = useSchedulePaymentMatches(upcoming.rows, today);
   // Which occurrence the confirmation is open on — the whole row, since the modal
@@ -111,6 +121,13 @@ export default function DashboardPage() {
   // left over plus what the month cost — net, since a refund already sits in
   // what is left over.
   const fundedCents = dashboard.totals.availableCents + netSpentCents;
+  const focus = focusWidgets(
+    toSections(groups, budgets).flatMap((section) => section.budgets),
+    [...dashboard.sections.flatMap((section) => section.rows), ...dashboard.otherRows],
+    focusReport.rows,
+    period,
+    focusReport.coverageStartPeriod
+  );
   const categoryCount = dashboard.sections.reduce(
     (count, section) => count + section.rows.length,
     0
@@ -341,6 +358,10 @@ export default function DashboardPage() {
         </SetupGuideCallout>
       )}
 
+      {budgets.length > 0 && (
+        <SpendingFocusPanel widgets={focus} onChoose={() => setChoosingFocus(true)} />
+      )}
+
       {scheduleError && (
         <p role="alert" className="mt-4 font-sans text-row text-vermilion">
           {scheduleError}
@@ -432,6 +453,8 @@ export default function DashboardPage() {
         seed={moving}
         handleClose={() => setMoving(null)}
       />
+
+      <SpendingFocusModal show={choosingFocus} handleClose={() => setChoosingFocus(false)} />
 
       <AssignIncomeModal
         show={assigning}

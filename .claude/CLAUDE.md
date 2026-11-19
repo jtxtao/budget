@@ -63,7 +63,7 @@ Stated once here. Where a rule in a companion doc names one of these, this is it
 
 | Route | Subject |
 |---|---|
-| `/` | Dashboard — today's figures, accounts and their last reconciliation, categories as the plan groups them, the one door to moving money between envelopes |
+| `/` | Dashboard — today's figures, the spending focus (up to eight chosen categories, one widget each), accounts and their last reconciliation, categories as the plan groups them, the one door to moving money between envelopes |
 | `/transactions` | The editable register, a slim to-be-assigned bar, the ledger-entry modal, the split editor, assignment |
 | `/plan` | Categories, estimates and goals, expected income, pay schedule, accounts and openings, the emergency fund, the balance-history grid (closed, at the foot) |
 | `/net-worth` | Hero figure and band split, stacked chart + table twin, holdings by band, settling a statement, the monthly pass |

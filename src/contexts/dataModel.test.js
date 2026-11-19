@@ -1518,6 +1518,77 @@ describe("a category that opts out of rollover", () => {
   });
 });
 
+describe("the spending focus is a preference, capped at eight", () => {
+  function setUp() {
+    seedAccounts();
+    return renderHook(
+      () => ({ budgets: useBudgets(), env: useEnvelopes(currentPeriod()) }),
+      { wrapper }
+    );
+  }
+
+  test("a ninth is refused, from either door, and restating one already in is not", () => {
+    const { result } = setUp();
+
+    const ids = [];
+    act(() => {
+      for (let i = 0; i < 9; i += 1) {
+        ids.push(result.current.budgets.addBudget({ name: `Category ${i}`, focused: i < 8 }).id);
+      }
+    });
+    expect(result.current.budgets.budgets.filter((budget) => budget.focused)).toHaveLength(8);
+    expect(result.current.budgets.budgets.find((budget) => budget.id === ids[8])).not.toHaveProperty(
+      "focused"
+    );
+
+    let refused;
+    act(() => {
+      refused = result.current.budgets.updateBudget({ id: ids[8], focused: true });
+    });
+    expect(refused).toEqual({ ok: false, error: expect.stringMatching(/holds 8 categories/) });
+
+    let added;
+    act(() => {
+      added = result.current.budgets.addBudget({ name: "Tenth", focused: true });
+    });
+    expect(added.ok).toBe(false);
+    expect(result.current.budgets.budgets.some((budget) => budget.name === "Tenth")).toBe(false);
+
+    let restated;
+    act(() => {
+      restated = result.current.budgets.updateBudget({ id: ids[0], focused: true });
+    });
+    expect(restated).toEqual({ ok: true });
+
+    act(() => {
+      result.current.budgets.updateBudget({ id: ids[0], focused: false });
+    });
+    act(() => {
+      refused = result.current.budgets.updateBudget({ id: ids[8], focused: true });
+    });
+    expect(refused).toEqual({ ok: true });
+  });
+
+  test("it survives a round trip through storage and moves no figure", () => {
+    const first = setUp();
+    let id;
+    act(() => {
+      id = first.result.current.budgets.addBudget({ name: "Dining out", focused: true }).id;
+    });
+    const before = first.result.current.env;
+    expectBalanced(before);
+    first.unmount();
+
+    const { result } = renderHook(
+      () => ({ budgets: useBudgets(), env: useEnvelopes(currentPeriod()) }),
+      { wrapper }
+    );
+    expect(result.current.budgets.budgets.find((budget) => budget.id === id).focused).toBe(true);
+    expect(result.current.env.toBeAssignedCents).toBe(before.toBeAssignedCents);
+    expectBalanced(result.current.env);
+  });
+});
+
 describe("accounts hold the money the ledger moves", () => {
   const useBooks = () => ({
     accounts: useAccounts(),
