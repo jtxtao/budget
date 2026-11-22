@@ -85,7 +85,6 @@ export default function ReportSummary({ report, peopleCount = 1, goalContributio
     averagedOverMonths,
     averageIncomeCents,
     averageSpendCents,
-    averageNetCents,
     buckets,
   } = report;
 

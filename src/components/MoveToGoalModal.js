@@ -24,13 +24,16 @@ export default function MoveToGoalModal({ show, row, categoryAvailableCents = 0,
   const { moveFromCategory } = useGoalSpending();
   const categoryName = row?.categoryName ?? "category";
   const canMove = categoryAvailableCents > 0;
+  const goalId = row?.goalId;
 
+  // Reset only when the modal opens or the goal changes — `row` is rebuilt on
+  // every render, so depending on it would wipe a half-typed amount.
   useEffect(() => {
-    if (!show || !row) return;
+    if (!show || !goalId) return;
     formRef.current.reset();
     setError(null);
     amountRef.current.value = "";
-  }, [show, row?.goalId]);
+  }, [show, goalId]);
 
   function handleSubmit(event) {
     event.preventDefault();
