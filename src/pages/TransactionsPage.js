@@ -247,6 +247,7 @@ export default function TransactionsPage() {
         accounts={accounts}
         payees={orderedPayees}
         payeeById={payeeById}
+        reconciledOn={accountId ? (accounts.find((a) => a.id === accountId)?.reconciledOn ?? null) : null}
         onChange={updateTransaction}
         onPayeeChange={handlePayeeChange}
         onDelete={deleteTransaction}

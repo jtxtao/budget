@@ -520,7 +520,21 @@ export const SyncProvider = ({ children }) => {
       // Unchanged from what the server last told us. This is what makes a
       // reload cost zero writes despite every store's persist effect firing on
       // mount.
-      if (known.current.get(key) === canonicalJSON(value)) return;
+      if (known.current.get(key) === canonicalJSON(value)) {
+        // The current state already matches the server. If a stale pending write
+        // exists for this key (e.g. a goal was added then deleted within the
+        // debounce window), drop it — flushing it would restore a state the user
+        // just moved away from.
+        if (pending.current.has(key)) {
+          pending.current.delete(key);
+          persistOutbox();
+          if (pending.current.size === 0 && pendingDeletes.current.size === 0) {
+            clearTimeout(flushTimer.current);
+            setSyncState(SYNC_STATE.IDLE);
+          }
+        }
+        return;
+      }
 
       pendingDeletes.current.delete(key);
       pending.current.set(key, value);

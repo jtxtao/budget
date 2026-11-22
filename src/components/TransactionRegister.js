@@ -4,7 +4,7 @@ import PayeeField from "./PayeeField";
 import { insideBudget, spendsThroughBudget } from "../contexts/AccountsContext";
 import { UNCATEGORIZED_BUDGET_ID } from "../contexts/constants";
 import { isSplit, isTransfer, TRANSACTION_KINDS } from "../contexts/TransactionsContext";
-import { amountAtRest, amountEditing, formatCents, formatPeriod, toCents } from "../utils";
+import { amountAtRest, amountEditing, formatCents, formatDateMedium, formatPeriod, toCents } from "../utils";
 
 /**
  * The ledger as a register: one row per movement of money, every field on it
@@ -672,6 +672,31 @@ function Band({ name, totals }) {
   );
 }
 
+/** A full-width divider showing when this account was last reconciled. */
+function ReconciliationMarker({ date }) {
+  return (
+    <tr className="bg-band">
+      <td colSpan={FULL_SPAN} className="px-3 py-1.5">
+        <div className="flex items-center gap-2 text-label uppercase text-ink">
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            className="h-3.5 w-3.5 shrink-0 text-verdant"
+          >
+            <path d="M2 8l4 4 8-8" />
+          </svg>
+          <span>Reconciled through {formatDateMedium(date)}</span>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 export default function TransactionRegister({
   period,
   filtered = false,
@@ -680,6 +705,7 @@ export default function TransactionRegister({
   accounts,
   payees,
   payeeById,
+  reconciledOn = null,
   onChange,
   onPayeeChange,
   onDelete,
@@ -745,6 +771,27 @@ export default function TransactionRegister({
       />
     ));
 
+  // The marker sits between transactions dated after reconciledOn and those
+  // dated on or before it. Since dated is sorted descending, the split point is
+  // the first index where date <= reconciledOn.
+  const markerIndex =
+    reconciledOn != null
+      ? dated.findIndex((t) => t.date != null && t.date <= reconciledOn)
+      : -1;
+
+  const datedRows = () => {
+    if (markerIndex === -1) return rowsFor(dated);
+    const after = dated.slice(0, markerIndex);
+    const beforeAndOn = dated.slice(markerIndex);
+    return (
+      <>
+        {rowsFor(after)}
+        <ReconciliationMarker date={reconciledOn} />
+        {rowsFor(beforeAndOn)}
+      </>
+    );
+  };
+
   return (
     <section className="overflow-hidden rounded-2xl border border-edge bg-panel">
       {transactions.length === 0 ? (
@@ -787,7 +834,7 @@ export default function TransactionRegister({
               </tr>
             </thead>
 
-            <tbody>{rowsFor(dated)}</tbody>
+            <tbody>{datedRows()}</tbody>
 
             {/* Money that moved before the ledger recorded when. It belongs to
                 no month, so it sits under every one of them rather than
